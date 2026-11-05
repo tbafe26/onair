@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+@import 'pretendard/dist/web/variable/pretendardvariable.css';
+
+/*
+ * 색 체계: 참조 색(--ref-color-*) 위에 의미 색(--sem-color-*)을 두고,
+ * shadcn/ui 테마 변수(--background 등)가 의미 색을 가리킨다.
+ * 테마는 루트의 data-theme 속성(dark | light)으로 바꾼다.
+ */
+:root {
+  /* 참조 색 */
+  --ref-color-neutral-0: #ffffff;
+  --ref-color-neutral-50: #f9f9f9;
+  --ref-color-neutral-100: #f0f1f2;
+  --ref-color-neutral-200: #dfe2ea;
+  --ref-color-neutral-400: #9da5b6;
+  --ref-color-neutral-500: #697183;
+  --ref-color-neutral-800: #21242a;
+  --ref-color-neutral-900: #141517;
+  --ref-color-neutral-950: #0e0f10;
+  --ref-color-mint-500: #00ffa3;
+  --ref-color-mint-700: #00a86b;
+  --ref-color-line-dark: #2e323a;
+  --ref-color-line-light: #dfe2ea;
+
+  --radius: 0.75rem;
+  --header-height: 60px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 82px;
+}
+
+/* 다크가 기본이다. data-theme이 없어도 다크로 보인다. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --sem-color-bg: var(--ref-color-neutral-900);
+  --sem-color-bg-subtle: var(--ref-color-neutral-900);
+  --sem-color-surface: var(--ref-color-neutral-800);
+  --sem-color-text: var(--ref-color-neutral-0);
+  --sem-color-text-title: var(--ref-color-neutral-200);
+  --sem-color-text-sub: var(--ref-color-neutral-400);
+  --sem-color-text-muted: var(--ref-color-neutral-500);
+  --sem-color-accent: var(--ref-color-mint-500);
+  --sem-color-on-accent: var(--ref-color-neutral-950);
+  --sem-color-accent-text: var(--ref-color-mint-500);
+  --sem-color-line: var(--ref-color-line-dark);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --sem-color-bg: var(--ref-color-neutral-0);
+  --sem-color-bg-subtle: var(--ref-color-neutral-50);
+  --sem-color-surface: var(--ref-color-neutral-100);
+  --sem-color-text: var(--ref-color-neutral-900);
+  --sem-color-text-title: var(--ref-color-neutral-800);
+  --sem-color-text-sub: var(--ref-color-neutral-500);
+  --sem-color-text-muted: var(--ref-color-neutral-400);
+  --sem-color-accent: var(--ref-color-mint-500);
+  --sem-color-on-accent: var(--ref-color-neutral-950);
+  /* 밝은 배경 위의 글자로 쓰는 민트는 읽을 수 있게 어둡게 한다. */
+  --sem-color-accent-text: var(--ref-color-mint-700);
+  --sem-color-line: var(--ref-color-line-light);
+}
+
+/* shadcn/ui 테마 변수 -> 의미 색 */
+:root {
+  --background: var(--sem-color-bg);
+  --foreground: var(--sem-color-text);
+  --card: var(--sem-color-surface);
+  --card-foreground: var(--sem-color-text-title);
+  --popover: var(--sem-color-surface);
+  --popover-foreground: var(--sem-color-text);
+  --primary: var(--sem-color-accent);
+  --primary-foreground: var(--sem-color-on-accent);
+  --secondary: var(--sem-color-surface);
+  --secondary-foreground: var(--sem-color-text);
+  --muted: var(--sem-color-surface);
+  --muted-foreground: var(--sem-color-text-sub);
+  --accent: var(--sem-color-surface);
+  --accent-foreground: var(--sem-color-text);
+  --destructive: #ff5c5c;
+  --border: var(--sem-color-line);
+  --input: var(--sem-color-line);
+  --ring: var(--sem-color-accent);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  /* 의미 색을 그대로 쓰는 보조 이름 */
+  --color-title: var(--sem-color-text-title);
+  --color-sub: var(--sem-color-text-sub);
+  --color-brand: var(--sem-color-accent-text);
+  --radius-lg: var(--radius);
+  --font-sans: 'Pretendard Variable', Pretendard, system-ui, sans-serif;
+}
+
+@layer base {
+  /* 루트 글꼴 크기는 브라우저 기본(16px)을 유지해 rem 단위가 줄지 않게 한다. 본문 14px은 body에만 둔다. */
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+  button {
+    cursor: pointer;
+  }
+}

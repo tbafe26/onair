@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>온에어</title>
+    <script>
+      // 첫 화면이 그려지기 전에 테마를 적용해 깜빡임을 막는다. 키는 vite.config.ts가 src/layout/theme-key.ts의 값으로 바꿔 넣는다.
+      try {
+        document.documentElement.setAttribute(
+          'data-theme',
+          localStorage.getItem('__THEME_KEY__') === 'light' ? 'light' : 'dark',
+        )
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark')
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
