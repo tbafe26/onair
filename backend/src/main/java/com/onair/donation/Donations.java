@@ -38,6 +38,8 @@ public class Donations implements BroadcastDeletionListener {
     // 사용자가 결제창을 닫았을 때 토스가 failUrl로 넘기는 코드.
     static final String USER_CANCELED = "PAY_PROCESS_CANCELED";
     static final int MAX_FAILURE_CODE_LENGTH = 100;
+    static final String AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
+    static final String PAYMENT_MISMATCH = "PAYMENT_MISMATCH";
     // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
     static final String ORDER_NAME = "온에어 방송 후원";
 
@@ -102,7 +104,7 @@ public class Donations implements BroadcastDeletionListener {
             throw new DonationNotPayableException();
         }
         if (amount != donation.getAmount()) {
-            fail(donation, "AMOUNT_MISMATCH");
+            fail(donation, AMOUNT_MISMATCH);
             throw new AmountMismatchException();
         }
         PaymentResult result = payments.confirm(paymentKey, orderId, amount);
@@ -114,11 +116,11 @@ public class Donations implements BroadcastDeletionListener {
                 return failedOrConfirmed(donation, paymentKey, amount, rejected.code());
             }
             case PaymentResult.AlreadyProcessed processed -> {
-                return failedOrConfirmed(donation, paymentKey, amount, TossPaymentGateway.ALREADY_PROCESSED);
+                return failedOrConfirmed(donation, paymentKey, amount, PaymentResult.ALREADY_PROCESSED_CODE);
             }
             case PaymentResult.Paid paid -> {
                 if (!matches(paid, donation, paymentKey)) {
-                    return failedOrConfirmed(donation, paymentKey, amount, "PAYMENT_MISMATCH");
+                    return failedOrConfirmed(donation, paymentKey, amount, PAYMENT_MISMATCH);
                 }
             }
         }
@@ -180,7 +182,7 @@ public class Donations implements BroadcastDeletionListener {
 
     // 결제 서비스가 돌려준 결제가 저장된 후원과 맞는지 본다: 상태 DONE, 주문 번호, 금액, 결제 키.
     private static boolean matches(PaymentResult.Paid paid, Donation donation, String paymentKey) {
-        return "DONE".equals(paid.status())
+        return PaymentResult.STATUS_DONE.equals(paid.status())
                 && donation.getOrderId().equals(paid.orderId())
                 && donation.getAmount() == paid.totalAmount()
                 && paymentKey.equals(paid.paymentKey());
