@@ -87,6 +87,9 @@ async function openOnAir(extra: Parameters<typeof goOnAir>[1] = {}) {
   const app = renderApp('/broadcasts/live/new')
   goOnAir(app, extra)
   await screen.findByText('LIVE')
+  // useBlocker는 마운트 뒤 효과를 두 번 거쳐 이동 차단을 건다. 화면에 LIVE가 보이는 순간에는 아직 걸리지 않았을 수 있어,
+  // 효과가 모두 끝난 뒤에 돌려줘야 바로 이어지는 이동 시도가 확실히 가로막힌다.
+  await act(async () => {})
   return app
 }
 
