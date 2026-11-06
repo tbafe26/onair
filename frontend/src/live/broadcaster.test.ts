@@ -563,3 +563,119 @@ describe('시청자 연결', () => {
     expect(created).toEqual([{ iceServers: [] }])
   })
 })
+
+describe('카메라 전환', () => {
+  const twoCameras = () => ({
+    enumerateDevices: vi.fn(async () => [{ kind: 'videoinput' }, { kind: 'videoinput' }, { kind: 'audioinput' }]),
+  })
+
+  it('카메라가 둘 이상이면 전환할 수 있고, 처음에는 전면이다', async () => {
+    const { broadcaster } = await previewing(setup(twoCameras()))
+
+    await vi.waitFor(() => expect(broadcaster.cameraInfo().canSwitch).toBe(true))
+    expect(broadcaster.cameraInfo().facing).toBe('user')
+  })
+
+  it('카메라가 하나이거나 장치 목록을 알 수 없으면 전환할 수 없다', async () => {
+    const one = await previewing(setup({ enumerateDevices: vi.fn(async () => [{ kind: 'videoinput' }]) }))
+    const unknown = await previewing(setup())
+    const failing = await previewing(
+      setup({
+        enumerateDevices: async () => {
+          throw new Error('목록 실패')
+        },
+      }),
+    )
+
+    await vi.waitFor(() => expect(one.env.deps.enumerateDevices).toHaveBeenCalled())
+    for (const { broadcaster } of [one, unknown, failing]) {
+      expect(broadcaster.cameraInfo().canSwitch).toBe(false)
+    }
+  })
+
+  it('전환하면 이전 스트림을 끄고 후면 카메라로 새 스트림을 연다', async () => {
+    const env = setup(twoCameras())
+    const { broadcaster } = await previewing(env)
+    await vi.waitFor(() => expect(broadcaster.cameraInfo().canSwitch).toBe(true))
+    const next = fakeStream()
+    vi.mocked(env.deps.getUserMedia!).mockResolvedValueOnce(next.stream)
+
+    await broadcaster.switchCamera()
+
+    expect(env.camera.tracks.every((track) => track.stop.mock.calls.length === 1)).toBe(true)
+    expect(env.deps.getUserMedia).toHaveBeenLastCalledWith({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    })
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', stream: next.stream })
+    expect(broadcaster.cameraInfo()).toMatchObject({ facing: 'environment', switching: false, switchFailure: null })
+
+    await broadcaster.switchCamera()
+    expect(broadcaster.cameraInfo().facing).toBe('user')
+  })
+
+  it('전환에 실패하면 이전 카메라를 다시 열고 이유를 남긴다', async () => {
+    const env = setup(twoCameras())
+    const { broadcaster } = await previewing(env)
+    await vi.waitFor(() => expect(broadcaster.cameraInfo().canSwitch).toBe(true))
+    const restored = fakeStream()
+    vi.mocked(env.deps.getUserMedia!)
+      .mockRejectedValueOnce(domError('OverconstrainedError'))
+      .mockResolvedValueOnce(restored.stream)
+
+    await broadcaster.switchCamera()
+
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', stream: restored.stream })
+    expect(broadcaster.cameraInfo()).toMatchObject({ facing: 'user', switching: false })
+    expect(broadcaster.cameraInfo().switchFailure).toContain('카메라를 바꾸지 못했습니다')
+  })
+
+  it('전환도 복구도 실패하면 카메라를 쓸 수 없는 상태가 된다', async () => {
+    const env = setup(twoCameras())
+    const { broadcaster } = await previewing(env)
+    await vi.waitFor(() => expect(broadcaster.cameraInfo().canSwitch).toBe(true))
+    vi.mocked(env.deps.getUserMedia!).mockRejectedValue(domError('NotReadableError'))
+
+    await broadcaster.switchCamera()
+
+    expect(broadcaster.state()).toEqual({ phase: 'cameraUnavailable', reason: 'notFound' })
+  })
+
+  it('송출 중에는 전환하지 않는다', async () => {
+    const env = setup(twoCameras())
+    const started = await onAirWith(env)
+    await vi.waitFor(() => expect(started.broadcaster.cameraInfo().canSwitch).toBe(true))
+    const calls = vi.mocked(env.deps.getUserMedia!).mock.calls.length
+
+    await started.broadcaster.switchCamera()
+
+    expect(vi.mocked(env.deps.getUserMedia!).mock.calls).toHaveLength(calls)
+    expect(started.broadcaster.state().phase).toBe('onAir')
+    expect(started.broadcaster.cameraInfo().facing).toBe('user')
+  })
+
+  it('전환하는 동안에는 송출을 시작하지 않는다', async () => {
+    const env = setup(twoCameras())
+    const { broadcaster } = await previewing(env)
+    let finish: (stream: MediaStream) => void = () => {}
+    vi.mocked(env.deps.getUserMedia!).mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+
+    const switching = broadcaster.switchCamera()
+    expect(broadcaster.cameraInfo().switching).toBe(true)
+    await broadcaster.start({ title: '제목', thumbnail: null })
+    expect(env.startLive).not.toHaveBeenCalled()
+
+    finish(fakeStream().stream)
+    await switching
+    expect(broadcaster.cameraInfo().switching).toBe(false)
+  })
+})
+
+async function onAirWith(env: ReturnType<typeof setup>) {
+  const { broadcaster } = await previewing(env)
+  const started = broadcaster.start({ title: '제목', thumbnail: null })
+  await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+  env.server.send({ type: 'joined' })
+  await started
+  return { broadcaster, env }
+}

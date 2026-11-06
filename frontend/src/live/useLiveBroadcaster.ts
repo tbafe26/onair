@@ -11,5 +11,6 @@ export function useLiveBroadcaster(deps: BroadcasterDeps) {
   }, [broadcaster])
 
   const state = useSyncExternalStore(broadcaster.subscribe, broadcaster.state)
-  return { state, start: broadcaster.start, end: broadcaster.end }
+  const camera = useSyncExternalStore(broadcaster.subscribe, broadcaster.cameraInfo)
+  return { state, camera, start: broadcaster.start, end: broadcaster.end, switchCamera: broadcaster.switchCamera }
 }

@@ -58,6 +58,9 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
     window.isSecureContext && navigator.mediaDevices?.getUserMedia
       ? (constraints) => navigator.mediaDevices.getUserMedia(constraints)
       : null,
+  enumerateDevices: navigator.mediaDevices?.enumerateDevices
+    ? () => navigator.mediaDevices.enumerateDevices()
+    : undefined,
   startLive,
   openSignaling,
   createPeerConnection: createBrowserPeerConnection,

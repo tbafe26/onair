@@ -4,7 +4,7 @@ import { useBlocker, useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
 import { fetchUploadPolicy } from '../api/broadcasts'
 import { Button } from '../components/ui/button'
-import type { CameraUnavailableReason } from '../live/broadcaster'
+import type { CameraFacing, CameraInfo, CameraUnavailableReason } from '../live/broadcaster'
 import { browserBroadcasterDeps } from '../live/browser-deps'
 import { useThumbnailPicker } from '../hooks/useThumbnailPicker'
 import { browserImageDeps } from '../lib/thumbnail-image-browser'
@@ -37,7 +37,7 @@ function CameraView({ stream, children }: { stream: MediaStream; children?: Reac
     if (videoRef.current) videoRef.current.srcObject = stream
   }, [stream])
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+    <div className="relative aspect-video overflow-hidden bg-black max-md:-mx-5 md:w-full md:rounded-xl">
       <video
         ref={videoRef}
         aria-label="카메라 미리보기"
@@ -47,6 +47,32 @@ function CameraView({ stream, children }: { stream: MediaStream; children?: Reac
         className="size-full object-cover"
       />
       {children}
+    </div>
+  )
+}
+
+const facingLabels: Record<CameraFacing, string> = { user: '전면', environment: '후면' }
+
+/** 미리보기 중에만 누를 수 있다. 카메라가 하나뿐이면 보이지 않는다. */
+function CameraSwitch({ camera, disabled, onSwitch }: { camera: CameraInfo; disabled: boolean; onSwitch: () => void }) {
+  if (!camera.canSwitch) return null
+  return (
+    <div className="flex flex-col gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="h-12 w-full text-base"
+        disabled={disabled || camera.switching}
+        onClick={onSwitch}
+      >
+        카메라 전환
+      </Button>
+      <p className="text-sm text-sub">현재 {facingLabels[camera.facing]} 카메라</p>
+      {camera.switchFailure && (
+        <p role="alert" className="text-sm text-destructive">
+          {camera.switchFailure}
+        </p>
+      )}
     </div>
   )
 }
@@ -67,7 +93,7 @@ function Elapsed({ startedAt }: { startedAt: number }) {
 export function LiveBroadcastPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { state, start, end } = useLiveBroadcaster(browserBroadcasterDeps)
+  const { state, camera, start, end, switchCamera } = useLiveBroadcaster(browserBroadcasterDeps)
   // 썸네일 상한은 서버 정책에서 받는다. 받지 못하면 크기는 서버에 맡긴다.
   const { data: uploadPolicy } = useQuery({
     queryKey: broadcastKeys.uploadPolicy(),
@@ -149,6 +175,7 @@ export function LiveBroadcastPage() {
       {(state.phase === 'previewing' || state.phase === 'starting') && (
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
           <CameraView stream={state.stream} />
+          <CameraSwitch camera={camera} disabled={state.phase === 'starting'} onSwitch={() => void switchCamera()} />
           <div className="flex flex-col gap-2">
             <label htmlFor="live-title" className="font-semibold text-title">
               제목
@@ -235,6 +262,7 @@ export function LiveBroadcastPage() {
           <p className="text-sub">
             경과 시간 <Elapsed startedAt={state.startedAt} />
           </p>
+          <CameraSwitch camera={camera} disabled onSwitch={() => {}} />
           <p className="text-sub">{state.maxViewers === null
               ? `시청자 ${state.viewerCount}명`
               : `시청자 ${state.viewerCount}/${state.maxViewers}`}</p>
@@ -253,7 +281,7 @@ export function LiveBroadcastPage() {
           ) : (
             <Button
               variant="destructive"
-              className="h-12 w-full text-base"
+              className="h-14 w-full text-lg"
               disabled={ending}
               onClick={() => setConfirmingEnd(true)}
             >
