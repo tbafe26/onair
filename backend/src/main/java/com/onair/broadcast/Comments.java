@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -40,23 +39,18 @@ class Comments {
     @Transactional(readOnly = true)
     CommentPage list(long broadcastId, Long before, Integer requestedSize) {
         requireBroadcast(broadcastId);
-        int size = requestedSize == null ? BroadcastService.DEFAULT_PAGE_SIZE : requestedSize;
-        if (size < 1) {
-            throw new InvalidRequestException(List.of(new FieldViolation("size", "size는 1 이상이어야 합니다")));
-        }
-        size = Math.min(size, BroadcastService.MAX_PAGE_SIZE);
-        // 한 건 더 읽어 다음 묶음이 있는지 판단한다.
-        List<Comment> found = comments.findBefore(
-                broadcastId, before == null ? Long.MAX_VALUE : before, PageRequest.of(0, size + 1));
-        List<CommentView> items = found.stream().limit(size).map(CommentView::of).toList();
-        Long nextCursor = found.size() > size ? items.getLast().id() : null;
+        long cursor = CursorPaging.cursor(before);
+        CursorPaging.Slice<Comment> slice = CursorPaging.read(
+                requestedSize, window -> comments.findBefore(broadcastId, cursor, window));
+        List<CommentView> items = slice.items().stream().map(CommentView::of).toList();
+        Long nextCursor = slice.hasNext() ? items.getLast().id() : null;
         return new CommentPage(items, nextCursor, comments.countOf(broadcastId));
     }
 
     /** 댓글을 쓴다. 로그인(401), 방송 존재(404), 내용 규칙(400) 순으로 확인한다. */
     @Transactional
     CommentView write(long broadcastId, Long userId, String rawContent) {
-        AppUser author = requireUser(userId);
+        AppUser author = Requester.load(userId, users);
         // 행을 잠그고 읽는다. 방송 종료도 같은 행을 잠그므로, 방송 중 확인과 저장 사이에 종료가 끼어들 수 없다.
         Broadcast broadcast = broadcasts.findByIdForUpdate(broadcastId)
                 .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
@@ -142,7 +136,7 @@ class Comments {
     /** 댓글을 지운다. 로그인(401), 방송과 댓글 존재(404, 다른 방송의 댓글 포함), 작성자(403) 순으로 확인한다. */
     @Transactional
     void delete(long broadcastId, long commentId, Long userId) {
-        long requester = requireUserId(userId);
+        long requester = Requester.id(userId);
         Broadcast broadcast = requireBroadcast(broadcastId);
         Comment comment = comments.findById(commentId)
                 .filter(found -> found.broadcastId() == broadcastId)
@@ -164,17 +158,6 @@ class Comments {
 
     private Broadcast requireBroadcast(long broadcastId) {
         return broadcasts.findById(broadcastId).orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
-    }
-
-    private AppUser requireUser(Long userId) {
-        return users.findById(requireUserId(userId)).orElseThrow(AuthenticationRequiredException::new);
-    }
-
-    private static long requireUserId(Long userId) {
-        if (userId == null) {
-            throw new AuthenticationRequiredException();
-        }
-        return userId;
     }
 
     private static String validate(String rawContent) {

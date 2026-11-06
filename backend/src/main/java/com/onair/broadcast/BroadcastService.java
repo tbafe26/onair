@@ -21,9 +21,6 @@ class BroadcastService {
 
     private static final Logger log = LoggerFactory.getLogger(BroadcastService.class);
 
-    static final int DEFAULT_PAGE_SIZE = 20;
-    static final int MAX_PAGE_SIZE = 50;
-
     private final BroadcastRepository repository;
     private final MediaStorage storage;
     private final RegistrationRules rules;
@@ -47,7 +44,7 @@ class BroadcastService {
      * userId는 요청한 사용자이고 로그인하지 않았으면 null이다. 이 사용자가 방송의 소유자가 된다.
      */
     Broadcast register(RegistrationForm form, Long userId) {
-        AppUser owner = requireUser(userId);
+        AppUser owner = Requester.load(userId, users);
         RegisterRecordingCommand command = rules.validate(form);
 
         try (MediaStorage.Batch batch = storage.begin()) {
@@ -68,13 +65,6 @@ class BroadcastService {
             batch.commit();
             return saved;
         }
-    }
-
-    private AppUser requireUser(Long userId) {
-        if (userId == null) {
-            throw new AuthenticationRequiredException();
-        }
-        return users.findById(userId).orElseThrow(AuthenticationRequiredException::new);
     }
 
     /**
@@ -120,7 +110,7 @@ class BroadcastService {
     }
 
     private Broadcast findOwned(long id, Long userId) {
-        long requester = requireUserId(userId);
+        long requester = Requester.id(userId);
         Broadcast broadcast = repository.findById(id).orElseThrow(() -> new BroadcastNotFoundException(id));
         if (!broadcast.isOwnedBy(requester)) {
             throw new BroadcastForbiddenException(id);
@@ -137,40 +127,26 @@ class BroadcastService {
     @Transactional(readOnly = true)
     BroadcastPage list(Long before, Integer requestedSize, String requestedKind) {
         BroadcastKind kind = parseKind(requestedKind);
-        return page(requestedSize, before, window -> switch (kind) {
-            case null -> repository.findBefore(before == null ? Long.MAX_VALUE : before, window);
-            case RECORDING -> repository.findRecordingsBefore(before == null ? Long.MAX_VALUE : before, window);
-            case LIVE -> repository.findLiveBefore(before == null ? Long.MAX_VALUE : before, window);
+        long cursor = CursorPaging.cursor(before);
+        return page(requestedSize, window -> switch (kind) {
+            case null -> repository.findBefore(cursor, window);
+            case RECORDING -> repository.findRecordingsBefore(cursor, window);
+            case LIVE -> repository.findLiveBefore(cursor, window);
         });
     }
 
     /** 내 방송 한 묶음. 목록과 같은 커서·크기 규칙이고, 로그인하지 않았으면(userId가 null) 401 예외다. */
     @Transactional(readOnly = true)
     BroadcastPage listMine(Long userId, Long before, Integer requestedSize) {
-        long ownerId = requireUserId(userId);
-        return page(requestedSize, before, window -> repository.findOwnedBefore(
-                ownerId, before == null ? Long.MAX_VALUE : before, window));
+        long ownerId = Requester.id(userId);
+        long cursor = CursorPaging.cursor(before);
+        return page(requestedSize, window -> repository.findOwnedBefore(ownerId, cursor, window));
     }
 
-    private BroadcastPage page(Integer requestedSize, Long before, Function<PageRequest, List<Broadcast>> finder) {
-        int size = requestedSize == null ? DEFAULT_PAGE_SIZE : requestedSize;
-        if (size < 1) {
-            throw new InvalidRequestException(List.of(new FieldViolation(
-                    "size", "size는 1 이상이어야 합니다")));
-        }
-        size = Math.min(size, MAX_PAGE_SIZE);
-        // 한 건 더 읽어 다음 묶음이 있는지 판단한다.
-        List<Broadcast> found = finder.apply(PageRequest.of(0, size + 1));
-        boolean hasNext = found.size() > size;
-        List<BroadcastSummary> items = found.stream().limit(size).map(BroadcastResponses::summary).toList();
-        return new BroadcastPage(items, hasNext);
-    }
-
-    private static long requireUserId(Long userId) {
-        if (userId == null) {
-            throw new AuthenticationRequiredException();
-        }
-        return userId;
+    private BroadcastPage page(Integer requestedSize, Function<PageRequest, List<Broadcast>> finder) {
+        CursorPaging.Slice<Broadcast> slice = CursorPaging.read(requestedSize, finder);
+        List<BroadcastSummary> items = slice.items().stream().map(BroadcastResponses::summary).toList();
+        return new BroadcastPage(items, slice.hasNext());
     }
 
     private static BroadcastKind parseKind(String value) {
@@ -196,9 +172,9 @@ class BroadcastService {
     Resource thumbnail(long id) {
         String key = repository.findById(id).orElseThrow(() -> new BroadcastNotFoundException(id)).thumbnailKey();
         if (key == null) {
-            throw new ThumbnailNotFoundException(id);
+            throw new ThumbnailNotFoundException();
         }
-        return storage.open(key).orElseThrow(() -> new MediaFileMissingException(id));
+        return storage.open(key).orElseThrow(() -> new MediaFileMissingException());
     }
 
     /** 영상 리소스와 저장된 파일 형식. 방송이 없거나 녹화방송이 아니면 404, 영상 파일이 사라졌으면 파일 없음 404 예외다. */
@@ -206,7 +182,7 @@ class BroadcastService {
     PlayableVideo video(long id) {
         RecordingBroadcast broadcast = findRecording(id);
         Resource resource = storage.open(broadcast.videoStorageKey())
-                .orElseThrow(() -> new MediaFileMissingException(id));
+                .orElseThrow(() -> new MediaFileMissingException());
         return new PlayableVideo(resource, broadcast.videoFormat());
     }
 

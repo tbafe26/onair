@@ -68,16 +68,16 @@ class BroadcastOwnerApiTest extends ApiTestSupport {
         long ownerId = owner().userId();
         String body = 등록한다(owner(), "내 녹화").andExpect(status().isCreated())
                 .andExpect(jsonPath("$.owner.id").value(ownerId))
-                .andExpect(jsonPath("$.owner.nickname").value("방장"))
+                .andExpect(jsonPath("$.owner.nickname").value("소유자닉"))
                 .andReturn().getResponse().getContentAsString();
         int id = JsonPath.read(body, "$.id");
 
         mockMvc.perform(get("/api/broadcasts/" + id))
                 .andExpect(jsonPath("$.owner.id").value(ownerId))
-                .andExpect(jsonPath("$.owner.nickname").value("방장"));
+                .andExpect(jsonPath("$.owner.nickname").value("소유자닉"));
         mockMvc.perform(get("/api/broadcasts"))
                 .andExpect(jsonPath("$.items[0].owner.id").value(ownerId))
-                .andExpect(jsonPath("$.items[0].owner.nickname").value("방장"));
+                .andExpect(jsonPath("$.items[0].owner.nickname").value("소유자닉"));
     }
 
     @Test
@@ -89,7 +89,7 @@ class BroadcastOwnerApiTest extends ApiTestSupport {
 
         mockMvc.perform(get("/api/broadcasts/" + id))
                 .andExpect(jsonPath("$.owner.id").value(ownerId))
-                .andExpect(jsonPath("$.owner.nickname").value("방장"));
+                .andExpect(jsonPath("$.owner.nickname").value("소유자닉"));
         mockMvc.perform(get("/api/broadcasts?kind=LIVE"))
                 .andExpect(jsonPath("$.items[0].owner.id").value(ownerId));
     }
@@ -97,12 +97,12 @@ class BroadcastOwnerApiTest extends ApiTestSupport {
     @Test
     void 방송마다_자기를_등록한_사용자가_소유자다() throws Exception {
         AuthClient other = AuthClient.signedUp(mockMvc, "other01", "손님");
-        등록한다(owner(), "방장의 방송").andExpect(status().isCreated());
+        등록한다(owner(), "소유자의 방송").andExpect(status().isCreated());
         등록한다(other, "손님의 방송").andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/broadcasts"))
                 .andExpect(jsonPath("$.items[0].title").value("손님의 방송"))
                 .andExpect(jsonPath("$.items[0].owner.nickname").value("손님"))
-                .andExpect(jsonPath("$.items[1].owner.nickname").value("방장"));
+                .andExpect(jsonPath("$.items[1].owner.nickname").value("소유자닉"));
     }
 }

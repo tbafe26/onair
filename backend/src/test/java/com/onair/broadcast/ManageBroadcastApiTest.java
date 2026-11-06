@@ -96,7 +96,7 @@ class ManageBroadcastApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.id").value(id))
                 .andExpect(jsonPath("$.title").value("바꾼 제목"))
                 .andExpect(jsonPath("$.kind").value("RECORDING"))
-                .andExpect(jsonPath("$.owner.nickname").value("방장"));
+                .andExpect(jsonPath("$.owner.nickname").value("소유자닉"));
         mockMvc.perform(get("/api/broadcasts/{id}", id)).andExpect(jsonPath("$.title").value("바꾼 제목"));
     }
 

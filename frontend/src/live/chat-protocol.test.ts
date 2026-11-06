@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import contract from '../../../contracts/chat.json'
+import { MAX_COMMENT_LENGTH } from '../api/comments'
 import { ChatMessageType, parseChatMessage } from './chat-protocol'
 
 const COMMENT = {
@@ -21,6 +22,10 @@ describe('계약 파일 대조', () => {
 
     expect(parseChatMessage({ type: 'comment', comment })).toEqual({ type: 'comment', comment })
     expect(contract.messages.comment['server->client']).toEqual(['comment'])
+  })
+
+  it('댓글 길이 상한이 계약과 같다', () => {
+    expect(MAX_COMMENT_LENGTH).toBe(contract.commentMaxLength)
   })
 
   it('계약대로 만든 ended 메시지를 읽는다', () => {

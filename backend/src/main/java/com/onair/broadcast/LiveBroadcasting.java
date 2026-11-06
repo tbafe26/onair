@@ -67,10 +67,7 @@ public class LiveBroadcasting {
      * userId는 요청한 사용자이고 로그인하지 않았으면 null이다. 이 사용자가 방송의 소유자가 된다.
      */
     public StartedLive start(StartLiveCommand command, Long userId) {
-        if (userId == null) {
-            throw new AuthenticationRequiredException();
-        }
-        AppUser owner = users.findById(userId).orElseThrow(AuthenticationRequiredException::new);
+        AppUser owner = Requester.load(userId, users);
         StartLiveCommand valid = rules.validate(command);
         String streamKey = StreamKeys.generate();
 
@@ -179,13 +176,11 @@ public class LiveBroadcasting {
      * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
      */
     public synchronized void endByOwner(long broadcastId, Long userId) {
-        if (userId == null) {
-            throw new AuthenticationRequiredException();
-        }
+        long requester = Requester.id(userId);
         Boolean onAir = transaction.execute(status -> {
             Broadcast broadcast = repository.findById(broadcastId)
                     .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
-            if (!broadcast.isOwnedBy(userId)) {
+            if (!broadcast.isOwnedBy(requester)) {
                 throw new BroadcastForbiddenException(broadcastId);
             }
             if (!(broadcast instanceof LiveBroadcast live)) {

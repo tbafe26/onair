@@ -138,7 +138,7 @@ it('없는 방송이면 안내와 목록으로 돌아가는 버튼을 보여 준
 it('방송 상세에 소유자 닉네임을 보여 준다', async () => {
   server.use(
     http.get('/api/broadcasts/7', () =>
-      HttpResponse.json({ ...detailResponse(7, '상세 방송', null), owner: { id: 9, nickname: '채널주인' } }),
+      HttpResponse.json({ ...detailResponse(7, '상세 방송', null), owner: { id: 9, nickname: '소유자닉' } }),
     ),
     http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
   )
@@ -146,5 +146,5 @@ it('방송 상세에 소유자 닉네임을 보여 준다', async () => {
   renderApp('/broadcasts/7')
 
   await screen.findByRole('heading', { name: '상세 방송' })
-  expect(screen.getByText('채널주인')).toBeInTheDocument()
+  expect(screen.getByText('소유자닉')).toBeInTheDocument()
 })
