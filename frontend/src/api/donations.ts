@@ -42,6 +42,43 @@ export async function createDonationOrder(
   return response.data
 }
 
+/** 승인으로 확정된 후원. */
+export interface ConfirmedDonation {
+  id: number
+  amount: number
+  message: string | null
+  donor: { id: number; nickname: string }
+  confirmedAt: string
+}
+
+/** 결제창이 돌려준 값으로 서버에 승인을 요청한다. 같은 요청을 반복해도 확정된 결과가 그대로 온다. */
+export async function confirmDonation(input: {
+  paymentKey: string
+  orderId: string
+  amount: number
+}): Promise<ConfirmedDonation> {
+  const response = await apiClient.post<ConfirmedDonation>('/api/donations/confirm', input)
+  return response.data
+}
+
+/** 승인 실패를 사용자에게 보일 문장으로 바꾼다. 서버가 상태 코드로 이유를 구분한다. */
+export function describeConfirmFailure(error: unknown): string {
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined
+  switch (status) {
+    case 400:
+      return '결제 금액이 주문과 달라 후원하지 못했습니다'
+    case 402:
+      return '결제가 승인되지 않아 후원하지 못했습니다'
+    case 403:
+    case 404:
+      return '후원 주문을 찾을 수 없습니다'
+    case 409:
+      return '이미 실패했거나 취소된 후원입니다'
+    default:
+      return '후원을 확인하지 못했습니다. 잠시 뒤 다시 시도하세요'
+  }
+}
+
 export interface DonationFailureView {
   amount?: string
   message?: string

@@ -77,7 +77,7 @@ it('로그인한 시청자는 금액 버튼을 고르고 받는 사람과 금액
   expect(request).toEqual({
     orderId: 'order-abcdef',
     orderName: '온에어 방송 후원',
-    successUrl: `${window.location.origin}/donations/success`,
+    successUrl: `${window.location.origin}/donations/success?broadcastId=5`,
     failUrl: `${window.location.origin}/donations/fail?orderId=order-abcdef&broadcastId=5`,
   })
   // 닉네임과 메시지 같은 구매자 정보는 결제위젯에 넘기지 않는다.

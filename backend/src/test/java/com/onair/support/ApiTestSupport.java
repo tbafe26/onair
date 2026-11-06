@@ -25,7 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestClockConfig.class)
+@Import({TestClockConfig.class, TestPaymentConfig.class})
 public abstract class ApiTestSupport {
 
     @Autowired
@@ -39,6 +39,9 @@ public abstract class ApiTestSupport {
 
     @Autowired
     protected JdbcTemplate jdbc;
+
+    @Autowired
+    protected FakePaymentGateway payments;
 
     @Value("${app.storage.dir}")
     protected Path storageDir;
@@ -62,6 +65,7 @@ public abstract class ApiTestSupport {
         // DB 시각 정밀도보다 거칠게 맞춰, 저장하기 전과 읽은 뒤의 시각이 같게 한다.
         clock.set(Instant.now().truncatedTo(ChronoUnit.MILLIS));
         owner = null;
+        payments.reset();
         jdbc.update("delete from donation");
         jdbc.update("delete from broadcast_comment");
         repository.deleteAll();
