@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.onair"
-version = "0.0.1-SNAPSHOT"
+version = "0.2.0-SNAPSHOT"
 description = "onair backend"
 
 java {
@@ -37,4 +37,9 @@ tasks.withType<Test> {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
+}
+
+// 컴파일 경고를 오류로 처리해 경고가 쌓이지 않게 한다. main과 test 모두 적용한다.
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }

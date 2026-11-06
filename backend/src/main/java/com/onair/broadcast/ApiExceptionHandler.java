@@ -79,7 +79,7 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private ResponseEntity<Object> tooLarge(Exception e, long maxBytes, WebRequest request) {
-        ProblemDetail problem = problem(HttpStatus.PAYLOAD_TOO_LARGE, "업로드 크기 초과",
+        ProblemDetail problem = problem(HttpStatus.CONTENT_TOO_LARGE, "업로드 크기 초과",
                 "영상은 " + RegistrationRules.formatBytes(maxBytes) + " 이하만 올릴 수 있습니다");
         problem.setProperty("maxBytes", maxBytes);
         return respond(e, problem, new HttpHeaders(), request);
