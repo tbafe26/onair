@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, it } from 'vitest'
@@ -168,5 +168,5 @@ it('이미 로그인한 상태로 들어오면 목록으로 보낸다', async ()
 
   await within(screen.getByRole('banner')).findByRole('button', { name: '방송러' })
 
-  expect(router.state.location.pathname).toBe('/')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
 })
