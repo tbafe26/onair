@@ -68,10 +68,10 @@ class SignalingContractFieldsTest extends ApiTestSupport {
         // 거절: 키가 틀린 송출자, 없는 방송의 시청자
         RecordingPeer rejectedBroadcaster = new RecordingPeer();
         RecordingPeer rejectedViewer = new RecordingPeer();
-        live.joinAsBroadcaster(id, "wrong-key", rejectedBroadcaster);
+        live.joinAsBroadcaster(id, "wrong-key", owner().userId(), rejectedBroadcaster);
         live.joinAsViewer(-1, rejectedViewer);
 
-        live.joinAsBroadcaster(id, started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(id, started.streamKey(), owner().userId(), broadcaster);
         live.joinAsViewer(id, viewer);
         live.joinAsViewer(id, leaver);
         String viewerId = (String) viewer.received.getFirst().fields().get(SignalMessage.Field.VIEWER_ID);
@@ -125,7 +125,7 @@ class SignalingContractFieldsTest extends ApiTestSupport {
         long id = started.broadcastId();
         RecordingPeer broadcaster = new RecordingPeer();
         RecordingPeer viewer = new RecordingPeer();
-        live.joinAsBroadcaster(id, started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(id, started.streamKey(), owner().userId(), broadcaster);
         live.joinAsViewer(id, viewer);
         String viewerId = (String) viewer.received.getFirst().fields().get(SignalMessage.Field.VIEWER_ID);
 
