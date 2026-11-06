@@ -424,3 +424,43 @@ describe('썸네일 선택', () => {
     expect(screen.getByRole('button', { name: '썸네일 선택 취소' })).toBeDisabled()
   })
 })
+
+describe('카메라 전환 버튼', () => {
+  const cameras = (count: number) => async () =>
+    Array.from({ length: count }, () => ({ kind: 'videoinput' }))
+
+  it('카메라가 둘이면 미리보기 중에 전면과 후면을 바꾼다', async () => {
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => fake.tracks }) as unknown as MediaStream)
+    resetFake({ getUserMedia, enumerateDevices: cameras(2) })
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+
+    expect(await screen.findByText('현재 전면 카메라')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: '카메라 전환' }))
+
+    expect(await screen.findByText('현재 후면 카메라')).toBeInTheDocument()
+    expect(getUserMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ video: expect.objectContaining({ facingMode: 'environment' }) }),
+    )
+  })
+
+  it('카메라가 하나뿐이면 전환 버튼이 없다', async () => {
+    resetFake({ enumerateDevices: cameras(1) })
+    renderApp('/broadcasts/live/new')
+
+    await screen.findByLabelText('카메라 미리보기')
+    await Promise.resolve()
+    expect(screen.queryByRole('button', { name: '카메라 전환' })).not.toBeInTheDocument()
+  })
+
+  it('송출 중에는 전환 버튼이 막힌다', async () => {
+    resetFake({ enumerateDevices: cameras(2) })
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+    await screen.findByRole('button', { name: '카메라 전환' })
+
+    await startOnAir(user)
+
+    expect(screen.getByRole('button', { name: '카메라 전환' })).toBeDisabled()
+  })
+})

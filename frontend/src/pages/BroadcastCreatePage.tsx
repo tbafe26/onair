@@ -94,7 +94,7 @@ export function BroadcastCreatePage() {
   return (
     <section className="max-w-2xl">
       <h1 className="text-[28px] font-extrabold text-foreground">방송 등록</h1>
-      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6 rounded-2xl bg-card p-6">
+      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6 rounded-2xl bg-card p-4 md:p-6">
         <div className="flex flex-col gap-2">
           <label htmlFor="broadcast-title" className="font-semibold text-title">
             제목

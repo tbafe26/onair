@@ -42,14 +42,31 @@ export interface BroadcasterDeps {
   /** 시청자마다 PeerConnection을 만든다. */
   createPeerConnection(): PeerConnectionLike
   now(): number
+  /** 카메라가 둘 이상인지 알아내는 데 쓴다. 지원하지 않거나 실패하면 전환 버튼을 두지 않는다. */
+  enumerateDevices?: () => Promise<{ kind: string }[]>
   /** 송출 중 화면이 꺼지지 않게 잠근다. 지원하지 않으면 없다. */
   requestWakeLock?: () => Promise<WakeLockHandle>
   /** 화면이 다시 보일 때마다 listener를 부른다. 돌려주는 함수로 구독을 푼다. 지원하지 않으면 없다. */
   watchVisible?: (listener: () => void) => () => void
 }
 
+export type CameraFacing = 'user' | 'environment'
+
+/** 카메라 전환에 관한 상태. 바뀔 때만 새 객체가 되므로 구독해서 읽을 수 있다. */
+export interface CameraInfo {
+  facing: CameraFacing
+  /** 카메라가 둘 이상이다. */
+  canSwitch: boolean
+  switching: boolean
+  /** 직전 전환이 실패한 이유. 이전 카메라로 되돌아간 상태다. */
+  switchFailure: string | null
+}
+
 export interface LiveBroadcaster {
   state(): BroadcasterState
+  cameraInfo(): CameraInfo
+  /** 미리보기 중에만 전면과 후면을 바꾼다. 다른 단계에서는 아무 일도 하지 않는다. */
+  switchCamera(): Promise<void>
   subscribe(listener: () => void): () => void
   /** 카메라를 연다. dispose 뒤에 다시 부르면 처음부터 다시 시작한다. */
   open(): void
@@ -62,6 +79,7 @@ export interface LiveBroadcaster {
 
 const END_CONFIRM_TIMEOUT_MS = 5000
 const HEARTBEAT_INTERVAL_MS = 10_000
+const SWITCH_FAILURE_MESSAGE = '카메라를 바꾸지 못했습니다. 이전 카메라로 계속합니다.'
 const START_FAILURE_MESSAGE = '송출을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'
 
 function classifyCameraError(error: unknown): CameraUnavailableReason {
@@ -76,6 +94,8 @@ function stopTracks(stream: MediaStream) {
 
 export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   let current: BroadcasterState = { phase: 'requestingCamera' }
+  const initialCamera: CameraInfo = { facing: 'user', canSwitch: false, switching: false, switchFailure: null }
+  let camera = initialCamera
   const listeners = new Set<() => void>()
   // open과 dispose마다 올린다. 늦게 끝난 비동기 작업이 이미 정리된 세션을 건드리지 않게 거른다.
   let generation = 0
@@ -91,6 +111,31 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   function set(next: BroadcasterState) {
     current = next
     listeners.forEach((listener) => listener())
+  }
+
+  function setCamera(patch: Partial<CameraInfo>) {
+    camera = { ...camera, ...patch }
+    listeners.forEach((listener) => listener())
+  }
+
+  function acquire(facing: CameraFacing) {
+    return deps.getUserMedia!({
+      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    })
+  }
+
+  /** 권한이 허용된 뒤에야 장치 목록이 채워지므로 카메라를 연 직후에 센다. */
+  async function detectCameras(session: number) {
+    if (!deps.enumerateDevices) return
+    try {
+      const devices = await deps.enumerateDevices()
+      if (session === generation) {
+        setCamera({ canSwitch: devices.filter((device) => device.kind === 'videoinput').length >= 2 })
+      }
+    } catch {
+      // 알 수 없으면 전환 버튼을 두지 않는다.
+    }
   }
 
   function streamOf(state: BroadcasterState): MediaStream | null {
@@ -236,15 +281,13 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       return
     }
     try {
-      const stream = await deps.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: true,
-      })
+      const stream = await acquire('user')
       if (session !== generation) {
         stopTracks(stream)
         return
       }
       set({ phase: 'previewing', stream, startFailure: null })
+      void detectCameras(session)
     } catch (error) {
       if (session !== generation) return
       set({ phase: 'cameraUnavailable', reason: classifyCameraError(error) })
@@ -299,6 +342,42 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   return {
     state: () => current,
 
+    cameraInfo: () => camera,
+
+    async switchCamera() {
+      if (current.phase !== 'previewing' || camera.switching || !deps.getUserMedia) return
+      const session = generation
+      const previous = camera.facing
+      const target: CameraFacing = previous === 'user' ? 'environment' : 'user'
+      // 휴대폰은 카메라를 하나씩만 열 수 있어서 먼저 끄고 새로 연다.
+      stopTracks(current.stream)
+      setCamera({ switching: true, switchFailure: null })
+      let next: MediaStream
+      let failure: string | null = null
+      let facing = target
+      try {
+        next = await acquire(target)
+      } catch {
+        // 바꾸지 못하면 이전 카메라를 다시 연다. 그것도 안 되면 카메라를 쓸 수 없는 상태다.
+        failure = SWITCH_FAILURE_MESSAGE
+        facing = previous
+        try {
+          next = await acquire(previous)
+        } catch (error) {
+          if (session !== generation) return
+          camera = { ...camera, switching: false }
+          set({ phase: 'cameraUnavailable', reason: classifyCameraError(error) })
+          return
+        }
+      }
+      if (session !== generation) {
+        stopTracks(next)
+        return
+      }
+      camera = { ...camera, facing, switching: false, switchFailure: failure }
+      set({ phase: 'previewing', stream: next, startFailure: null })
+    },
+
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -308,6 +387,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
 
     open() {
       generation += 1
+      camera = initialCamera
       current = { phase: 'requestingCamera' }
       listeners.forEach((listener) => listener())
       void openCamera(generation)
@@ -315,7 +395,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
 
     async start(input) {
       // 송출을 시작하는 동안과 방송 중에는 다시 시작하지 않는다.
-      if (current.phase !== 'previewing') return
+      if (current.phase !== 'previewing' || camera.switching) return
       const session = generation
       const { stream } = current
       set({ phase: 'starting', stream })
@@ -364,6 +444,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         pendingEnd = null
       }
       current = { phase: 'requestingCamera' }
+      camera = initialCamera
     },
   }
 }

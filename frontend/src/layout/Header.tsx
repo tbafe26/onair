@@ -1,7 +1,8 @@
-import { Menu, Moon, Sun } from 'lucide-react'
+import { Menu, Moon, Radio, Sun, Upload } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { APP_NAME } from '@/app-name'
 import { Button } from '@/components/ui/button'
+import { useIsMobile } from '@/hooks/useMediaQuery'
 import { useTheme } from './theme'
 
 type HeaderProps = {
@@ -11,9 +12,10 @@ type HeaderProps = {
 
 export function Header({ onToggleSidebar, sidebarExpanded }: HeaderProps) {
   const { theme, toggleTheme } = useTheme()
+  const isMobile = useIsMobile()
 
   return (
-    <header className="sticky top-0 z-20 flex h-[var(--header-height)] shrink-0 items-center justify-between bg-background px-5">
+    <header className="sticky top-0 z-20 flex h-[var(--header-height)] shrink-0 items-center justify-between bg-background px-3 md:px-5">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -29,16 +31,33 @@ export function Header({ onToggleSidebar, sidebarExpanded }: HeaderProps) {
           {APP_NAME}
         </Link>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 md:gap-3">
         <Button variant="ghost" size="icon" aria-label="테마 전환" onClick={toggleTheme}>
           {theme === 'dark' ? <Sun className="size-6" /> : <Moon className="size-6" />}
         </Button>
-        <Button asChild variant="outline" className="h-9 px-5">
-          <Link to="/broadcasts/new">녹화방송 등록</Link>
-        </Button>
-        <Button asChild className="h-9 px-5">
-          <Link to="/broadcasts/live/new">라이브 송출</Link>
-        </Button>
+        {isMobile ? (
+          <>
+            <Button asChild variant="outline" size="icon">
+              <Link to="/broadcasts/new" aria-label="녹화방송 등록">
+                <Upload className="size-5" />
+              </Link>
+            </Button>
+            <Button asChild size="icon">
+              <Link to="/broadcasts/live/new" aria-label="라이브 송출">
+                <Radio className="size-5" />
+              </Link>
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button asChild variant="outline" className="h-9 px-5">
+              <Link to="/broadcasts/new">녹화방송 등록</Link>
+            </Button>
+            <Button asChild className="h-9 px-5">
+              <Link to="/broadcasts/live/new">라이브 송출</Link>
+            </Button>
+          </>
+        )}
       </div>
     </header>
   )
