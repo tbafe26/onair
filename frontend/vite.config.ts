@@ -44,12 +44,34 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     test: {
-      environment: 'jsdom',
-      setupFiles: ['./src/test/setup.ts'],
       globals: false,
       css: false,
       // Gradle 데몬 등으로 부하가 걸리면 기본 5초 제한에 걸려 간헐적으로 실패해 늘린다.
       testTimeout: 20_000,
+      // 화면이 없는 모듈 테스트는 jsdom을 띄우지 않는다. jsdom 생성이 전체 시간의 절반 가까이를 차지한다.
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'dom',
+            // client.test.ts는 쿠키(document.cookie)와 상대 주소를 쓰므로 브라우저 환경에서 돈다.
+            include: ['src/**/*.test.tsx', 'src/api/client.test.ts'],
+            environment: 'jsdom',
+            pool: 'vmThreads',
+            setupFiles: ['./src/test/setup.ts'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'node',
+            include: ['src/**/*.test.ts'],
+            exclude: ['src/api/client.test.ts'],
+            environment: 'node',
+            setupFiles: ['./src/test/setup-node.ts'],
+          },
+        },
+      ],
     },
   }
 })
