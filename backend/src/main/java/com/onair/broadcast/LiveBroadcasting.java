@@ -295,7 +295,7 @@ public class LiveBroadcasting {
 
     private void finish(long broadcastId) {
         transaction.executeWithoutResult(status ->
-                repository.findLiveById(broadcastId).ifPresent(live -> live.end(clock.instant())));
+                repository.findLiveByIdForUpdate(broadcastId).ifPresent(live -> live.end(clock.instant())));
         for (Peer viewer : rooms.closeRoom(broadcastId)) {
             viewer.send(SignalMessage.of(SignalMessage.ENDED));
             viewer.close();

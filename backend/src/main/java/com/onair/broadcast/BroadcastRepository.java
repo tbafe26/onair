@@ -1,9 +1,11 @@
 package com.onair.broadcast;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -28,6 +30,19 @@ interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
 
     @Query("select l from LiveBroadcast l where l.id = :id")
     Optional<LiveBroadcast> findLiveById(@Param("id") long id);
+
+    /**
+     * 행을 잠그고 읽는다. 채팅 쓰기와 방송 종료가 같은 행을 잠가 서로 기다리게 해, 종료가 확정된 뒤에는 채팅이 저장되지 않게 한다.
+     * 잠금은 부른 쪽 트랜잭션이 끝날 때까지 유지된다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select b from Broadcast b where b.id = :id")
+    Optional<Broadcast> findByIdForUpdate(@Param("id") long id);
+
+    /** findByIdForUpdate와 같되 라이브방송만 읽는다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from LiveBroadcast l where l.id = :id")
+    Optional<LiveBroadcast> findLiveByIdForUpdate(@Param("id") long id);
 
     @Query("select l from LiveBroadcast l where l.status = com.onair.broadcast.LiveStatus.ON_AIR")
     List<LiveBroadcast> findOnAirLives();

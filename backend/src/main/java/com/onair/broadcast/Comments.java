@@ -4,11 +4,11 @@ import com.onair.auth.AppUser;
 import com.onair.auth.AppUserRepository;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +27,7 @@ class Comments {
     private final AppUserRepository users;
     private final Clock clock;
     /** 채팅 구독 표. 방송 중인 라이브방송 하나에 구독자 묶음 하나이고, 서버 메모리에만 둔다(서버 한 대 전제). */
-    private final Map<Long, Set<ChatSubscriber>> subscribers = new HashMap<>();
+    private final Map<Long, Set<ChatSubscriber>> subscribers = new ConcurrentHashMap<>();
 
     Comments(CommentRepository comments, BroadcastRepository broadcasts, AppUserRepository users, Clock clock) {
         this.comments = comments;
@@ -57,7 +57,9 @@ class Comments {
     @Transactional
     CommentView write(long broadcastId, Long userId, String rawContent) {
         AppUser author = requireUser(userId);
-        Broadcast broadcast = requireBroadcast(broadcastId);
+        // 행을 잠그고 읽는다. 방송 종료도 같은 행을 잠그므로, 방송 중 확인과 저장 사이에 종료가 끼어들 수 없다.
+        Broadcast broadcast = broadcasts.findByIdForUpdate(broadcastId)
+                .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
         // 라이브방송의 댓글이 채팅이다. 방송 중일 때만 쓸 수 있다.
         LiveBroadcast live = broadcast instanceof LiveBroadcast found ? found : null;
         if (live != null && !live.isOnAir()) {
@@ -73,27 +75,40 @@ class Comments {
     }
 
     /** 채팅 구독을 시작한다. 방송 중인 라이브방송만 구독자로 받고, 종료된 방송은 바로 ended를 보내고 닫는다. */
-    synchronized void subscribe(long broadcastId, ChatSubscriber subscriber) {
-        // 확인과 등록을 같은 잠금 안에서 해야 종료 알림(endChat)을 놓치지 않는다.
-        if (!(broadcasts.findById(broadcastId).orElse(null) instanceof LiveBroadcast live)) {
+    void subscribe(long broadcastId, ChatSubscriber subscriber) {
+        // 먼저 등록하고 나중에 상태를 읽는다. 읽는 사이에 방송이 끝나도 endChat이나 아래 확인 중 한쪽이 ended를 보낸다.
+        // 전역 잠금이 없으므로 DB 읽기와 전송이 다른 방송의 채팅을 막지 않는다.
+        subscribers.compute(broadcastId, (id, peers) -> {
+            Set<ChatSubscriber> set = peers == null ? new CopyOnWriteArraySet<>() : peers;
+            set.add(subscriber);
+            return set;
+        });
+        LiveBroadcast live = broadcasts.findById(broadcastId).orElse(null) instanceof LiveBroadcast found ? found : null;
+        if (live == null) {
+            release(broadcastId, subscriber);
             subscriber.close();
-            return;
-        }
-        if (!live.isOnAir()) {
+        } else if (!live.isOnAir() && release(broadcastId, subscriber)) {
             subscriber.send(ChatMessage.ended());
             subscriber.close();
-            return;
         }
-        subscribers.computeIfAbsent(broadcastId, id -> new LinkedHashSet<>()).add(subscriber);
     }
 
-    synchronized void unsubscribe(ChatSubscriber subscriber) {
-        subscribers.values().forEach(peers -> peers.remove(subscriber));
-        subscribers.values().removeIf(Set::isEmpty);
+    void unsubscribe(ChatSubscriber subscriber) {
+        subscribers.keySet().forEach(broadcastId -> release(broadcastId, subscriber));
+    }
+
+    /** 구독자를 표에서 뺀다. 이 호출이 뺐을 때만 true라서, 종료 알림을 보낼 책임이 한 곳에만 생긴다. */
+    private boolean release(long broadcastId, ChatSubscriber subscriber) {
+        boolean[] released = {false};
+        subscribers.computeIfPresent(broadcastId, (id, peers) -> {
+            released[0] = peers.remove(subscriber);
+            return peers.isEmpty() ? null : peers;
+        });
+        return released[0];
     }
 
     /** 라이브방송이 끝났다. 송출 모듈이 종료 경로에서 부른다. 구독자 전원에게 ended를 보내고 닫는다. */
-    synchronized void endChat(long broadcastId) {
+    void endChat(long broadcastId) {
         Set<ChatSubscriber> peers = subscribers.remove(broadcastId);
         if (peers == null) {
             return;
@@ -104,7 +119,8 @@ class Comments {
         }
     }
 
-    private synchronized void publish(long broadcastId, CommentView view) {
+    // 연결마다 전송이 직렬화되어 있으므로(WebSocketPeer) 여기서는 잠그지 않는다.
+    private void publish(long broadcastId, CommentView view) {
         for (ChatSubscriber subscriber : subscribers.getOrDefault(broadcastId, Set.of())) {
             subscriber.send(ChatMessage.comment(view));
         }
