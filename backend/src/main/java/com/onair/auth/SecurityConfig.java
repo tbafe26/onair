@@ -94,6 +94,7 @@ class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/broadcasts/*").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/broadcasts/*/donations").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/donations/confirm").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/donations/*/fail").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, e) -> writeProblem(
