@@ -11,6 +11,7 @@ import {
   type Comment,
 } from '../api/comments'
 import { useAuth } from '../auth/auth-context'
+import { canDeleteComment } from '../lib/broadcast-view'
 import { formatDateTime } from '../lib/format'
 import { Modal } from './Modal'
 import { Button } from './ui/button'
@@ -131,7 +132,7 @@ function CommentForm({ broadcastId }: { broadcastId: number }) {
 function CommentItem({ broadcastId, comment }: { broadcastId: number; comment: Comment }) {
   const { state } = useAuth()
   const [confirming, setConfirming] = useState(false)
-  const mine = state.status === 'user' && state.user.id === comment.author.id
+  const mine = canDeleteComment(state, comment.author.id)
 
   return (
     <li className="flex flex-col gap-1">

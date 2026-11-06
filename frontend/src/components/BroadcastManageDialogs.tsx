@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { broadcastKeys } from '../api/broadcast-keys'
 import { decodeFailure, deleteBroadcast, endBroadcast, renameBroadcast } from '../api/broadcasts'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
+import { manageFailureMessage } from '../lib/broadcast-view'
 import { Button } from './ui/button'
 import { Modal } from './Modal'
 import { TextField } from './TextField'
@@ -25,13 +26,7 @@ export function EditTitleDialog({ broadcast, onClose }: { broadcast: Target; onC
       await queryClient.invalidateQueries({ queryKey: broadcastKeys.all })
       onClose()
     },
-    onError: (failure) => {
-      const decoded = decodeFailure(failure)
-      if (decoded.kind === 'invalid') setError(decoded.fieldErrors.title ?? '제목을 고치지 못했습니다')
-      else if (decoded.kind === 'forbidden') setError('소유자만 제목을 고칠 수 있습니다')
-      else if (decoded.kind === 'notFound') setError('방송을 찾을 수 없습니다')
-      else setError('제목을 고치지 못했습니다. 잠시 뒤 다시 시도하세요')
-    },
+    onError: (failure) => setError(manageFailureMessage('rename', decodeFailure(failure))),
   })
 
   function handleSubmit(event: FormEvent) {
@@ -87,13 +82,7 @@ export function DeleteBroadcastDialog({
       onClose()
       onDeleted?.()
     },
-    onError: (failure) => {
-      const decoded = decodeFailure(failure)
-      if (decoded.kind === 'conflict') setError(decoded.message)
-      else if (decoded.kind === 'forbidden') setError('소유자만 지울 수 있습니다')
-      else if (decoded.kind === 'notFound') setError('이미 지워진 방송입니다')
-      else setError('방송을 지우지 못했습니다. 잠시 뒤 다시 시도하세요')
-    },
+    onError: (failure) => setError(manageFailureMessage('delete', decodeFailure(failure))),
   })
 
   return (
@@ -129,12 +118,7 @@ export function EndBroadcastDialog({ broadcast, onClose }: { broadcast: Target; 
       await queryClient.invalidateQueries({ queryKey: broadcastKeys.all })
       onClose()
     },
-    onError: (failure) => {
-      const decoded = decodeFailure(failure)
-      if (decoded.kind === 'forbidden') setError('소유자만 종료할 수 있습니다')
-      else if (decoded.kind === 'notFound') setError('이미 지워진 방송입니다')
-      else setError('송출을 종료하지 못했습니다. 잠시 뒤 다시 시도하세요')
-    },
+    onError: (failure) => setError(manageFailureMessage('end', decodeFailure(failure))),
   })
 
   return (

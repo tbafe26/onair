@@ -34,6 +34,11 @@ public class RegistrationRules implements UploadLimit {
     }
 
     @Override
+    public long maxThumbnailBytes() {
+        return MAX_THUMBNAIL_BYTES;
+    }
+
+    @Override
     public long maxVideoBytes() {
         return maxVideoBytes;
     }
