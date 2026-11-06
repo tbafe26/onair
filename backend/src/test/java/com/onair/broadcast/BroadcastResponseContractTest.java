@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +31,7 @@ class BroadcastResponseContractTest extends ApiTestSupport {
     }
 
     long 녹화방송을_등록한다() throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        String body = mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile(
                                 "video", "v.mp4", "video/mp4", BroadcastPagingApiTest.MP4_BYTES))
                         .param("title", "녹화"))
@@ -42,7 +41,7 @@ class BroadcastResponseContractTest extends ApiTestSupport {
     }
 
     long 라이브방송을_시작한다() throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token()).param("title", "라이브"))
+        String body = mockMvc.perform(multipart("/api/broadcasts/live").with(owner().credentials()).param("title", "라이브"))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return mapper.readTree(body).get("id").asLong();
@@ -74,10 +73,12 @@ class BroadcastResponseContractTest extends ApiTestSupport {
 
         JsonNode item = 읽는다("/api/broadcasts?kind=RECORDING").get("items").get(0);
         계약과_같다(item, recording.get("summary"));
+        계약과_같다(item.get("owner"), contract.get("owner"));
 
         JsonNode detail = 읽는다("/api/broadcasts/" + id);
         계약과_같다(detail, recording.get("detail"));
         계약과_같다(detail.get("video"), recording.get("detail").get("video"));
+        계약과_같다(detail.get("owner"), contract.get("owner"));
     }
 
     @Test
@@ -87,7 +88,10 @@ class BroadcastResponseContractTest extends ApiTestSupport {
 
         JsonNode item = 읽는다("/api/broadcasts?kind=LIVE").get("items").get(0);
         계약과_같다(item, live.get("summary"));
+        계약과_같다(item.get("owner"), contract.get("owner"));
 
-        계약과_같다(읽는다("/api/broadcasts/" + id), live.get("detail"));
+        JsonNode detail = 읽는다("/api/broadcasts/" + id);
+        계약과_같다(detail, live.get("detail"));
+        계약과_같다(detail.get("owner"), contract.get("owner"));
     }
 }

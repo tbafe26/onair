@@ -1,5 +1,7 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AppUser;
+import com.onair.auth.AppUserRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,6 +31,7 @@ public class LiveBroadcasting {
     private final BroadcastRepository repository;
     private final MediaStorage storage;
     private final RegistrationRules rules;
+    private final AppUserRepository users;
     private final TransactionTemplate transaction;
     private final Clock clock;
     private final LiveRooms rooms;
@@ -43,6 +46,7 @@ public class LiveBroadcasting {
             BroadcastRepository repository,
             MediaStorage storage,
             RegistrationRules rules,
+            AppUserRepository users,
             PlatformTransactionManager transactionManager,
             Clock clock,
             @Value("${app.live.max-viewers:5}") int maxViewers) {
@@ -51,11 +55,19 @@ public class LiveBroadcasting {
         this.repository = repository;
         this.storage = storage;
         this.rules = rules;
+        this.users = users;
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
-    /** 입력을 검사하고 방송 중인 라이브방송을 저장한 뒤 송출 키를 발급한다. 키 원문은 여기서 돌려주는 값에만 있다. */
-    public StartedLive start(StartLiveCommand command) {
+    /**
+     * 로그인을 확인하고 입력을 검사한 뒤 방송 중인 라이브방송을 저장하고 송출 키를 발급한다. 키 원문은 여기서 돌려주는 값에만 있다.
+     * userId는 요청한 사용자이고 로그인하지 않았으면 null이다. 이 사용자가 방송의 소유자가 된다.
+     */
+    public StartedLive start(StartLiveCommand command, Long userId) {
+        if (userId == null) {
+            throw new AuthenticationRequiredException();
+        }
+        AppUser owner = users.findById(userId).orElseThrow(AuthenticationRequiredException::new);
         StartLiveCommand valid = rules.validate(command);
         String streamKey = StreamKeys.generate();
 
@@ -63,7 +75,7 @@ public class LiveBroadcasting {
             String thumbnailKey = valid.thumbnail() == null
                     ? null : MultipartInputs.store(batch, valid.thumbnail());
             LiveBroadcast saved = repository.save(new LiveBroadcast(
-                    valid.title(), StreamKeys.hash(streamKey), thumbnailKey, clock.instant()));
+                    valid.title(), StreamKeys.hash(streamKey), thumbnailKey, clock.instant(), owner));
             batch.commit();
             return new StartedLive(saved.getId(), streamKey);
         }

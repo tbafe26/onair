@@ -7,8 +7,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import com.onair.auth.AppUser;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Inheritance;
 import jakarta.persistence.InheritanceType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import java.time.Instant;
 
 /**
@@ -31,12 +35,18 @@ public abstract class Broadcast {
     @Column(nullable = false)
     private Instant createdAt;
 
+    // 소유자가 생기기 전에 올라온 방송이 있는 DB를 위해 NOT NULL을 걸지 않는다. 그런 방송은 서버가 시작할 때 지운다.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private AppUser owner;
+
     protected Broadcast() {
     }
 
-    protected Broadcast(String title, Instant createdAt) {
+    protected Broadcast(String title, Instant createdAt, AppUser owner) {
         this.title = title;
         this.createdAt = createdAt;
+        this.owner = owner;
     }
 
     public Long getId() {
@@ -45,6 +55,10 @@ public abstract class Broadcast {
 
     public String getTitle() {
         return title;
+    }
+
+    public AppUser getOwner() {
+        return owner;
     }
 
     public abstract BroadcastKind getKind();

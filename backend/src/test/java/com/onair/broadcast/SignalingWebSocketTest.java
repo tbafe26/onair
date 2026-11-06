@@ -63,6 +63,11 @@ class SignalingWebSocketTest {
         }
     }
 
+    /** 가입해서 로그인한 사용자의 Cookie 헤더 값. DB를 비우지 않는 테스트라 아이디는 매번 새로 만든다. */
+    String 로그인한_쿠키() {
+        return RealPortLogin.signUp(port, "u" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12), "방장");
+    }
+
     RestClient rest() {
         return RestClient.create("http://localhost:" + port);
     }
@@ -71,7 +76,7 @@ class SignalingWebSocketTest {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("title", "통합 테스트 라이브");
         return rest().post().uri("/api/broadcasts/live")
-                .header("Cookie", Csrf.COOKIE + "=" + Csrf.TOKEN)
+                .header("Cookie", 로그인한_쿠키())
                 .header(Csrf.HEADER, Csrf.TOKEN)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body)

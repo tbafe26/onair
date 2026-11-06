@@ -25,6 +25,7 @@ public final class AuthClient {
     private final MockMvc mockMvc;
     private final MockHttpSession session = new MockHttpSession();
     private String csrf;
+    private long userId;
 
     private AuthClient(MockMvc mockMvc) {
         this.mockMvc = mockMvc;
@@ -49,19 +50,24 @@ public final class AuthClient {
     }
 
     public ResultActions signup(String loginId, String password, String nickname) throws Exception {
-        return remember(mockMvc.perform(post("/api/auth/signup").with(credentials())
+        return rememberUser(remember(mockMvc.perform(post("/api/auth/signup").with(credentials())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(JSON.writeValueAsString(Map.of("loginId", loginId, "password", password, "nickname", nickname)))));
+                .content(JSON.writeValueAsString(Map.of("loginId", loginId, "password", password, "nickname", nickname))))));
     }
 
     public ResultActions login(String loginId, String password) throws Exception {
-        return remember(mockMvc.perform(post("/api/auth/login").with(credentials())
+        return rememberUser(remember(mockMvc.perform(post("/api/auth/login").with(credentials())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(JSON.writeValueAsString(Map.of("loginId", loginId, "password", password)))));
+                .content(JSON.writeValueAsString(Map.of("loginId", loginId, "password", password))))));
     }
 
     public ResultActions logout() throws Exception {
         return remember(mockMvc.perform(post("/api/auth/logout").with(credentials())));
+    }
+
+    /** 마지막으로 가입·로그인에 성공한 사용자의 id. */
+    public long userId() {
+        return userId;
     }
 
     public String sessionId() {
@@ -88,6 +94,14 @@ public final class AuthClient {
             }
             return request;
         };
+    }
+
+    private ResultActions rememberUser(ResultActions result) throws Exception {
+        var response = result.andReturn().getResponse();
+        if (response.getStatus() < 300) {
+            userId = JSON.readTree(response.getContentAsString()).get("id").asLong();
+        }
+        return result;
     }
 
     private ResultActions remember(ResultActions result) {

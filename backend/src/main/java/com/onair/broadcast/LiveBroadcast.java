@@ -1,5 +1,6 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AppUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.EnumType;
@@ -29,8 +30,8 @@ public class LiveBroadcast extends Broadcast {
     protected LiveBroadcast() {
     }
 
-    LiveBroadcast(String title, String streamKeyHash, String thumbnailKey, Instant startedAt) {
-        super(title, startedAt);
+    LiveBroadcast(String title, String streamKeyHash, String thumbnailKey, Instant startedAt, AppUser owner) {
+        super(title, startedAt, owner);
         this.status = LiveStatus.ON_AIR;
         this.streamKeyHash = streamKeyHash;
         this.thumbnailKey = thumbnailKey;

@@ -52,6 +52,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return respond(e, problem(HttpStatus.UNAUTHORIZED, "로그인 실패", e.getMessage()), new HttpHeaders(), request);
     }
 
+    @ExceptionHandler(AuthenticationRequiredException.class)
+    ResponseEntity<Object> handleAuthenticationRequired(AuthenticationRequiredException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.UNAUTHORIZED, "로그인 필요", e.getMessage()), new HttpHeaders(), request);
+    }
+
     @ExceptionHandler(BroadcastNotFoundException.class)
     ResponseEntity<Object> handleNotFound(BroadcastNotFoundException e, WebRequest request) {
         return respond(e, problem(HttpStatus.NOT_FOUND, "방송 없음", e.getMessage()), new HttpHeaders(), request);

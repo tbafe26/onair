@@ -13,6 +13,9 @@ public interface MediaStorage {
     /** 키로 읽기용 리소스를 연다. 파일이 없으면 비어 있다. */
     Optional<Resource> open(String key);
 
+    /** 키의 파일을 지운다. 이미 없으면 아무것도 하지 않고, 지우지 못하면 UncheckedIOException이다. */
+    void delete(String key);
+
     /**
      * 파일 묶음. commit하지 않고 close하면 묶음에서 저장한 파일을 모두 지운다.
      * try-with-resources로 쓰면 도중에 실패해도 파일이 남지 않는다.

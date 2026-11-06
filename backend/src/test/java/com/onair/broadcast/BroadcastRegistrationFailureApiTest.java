@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
 import java.nio.file.Files;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -30,7 +29,7 @@ class BroadcastRegistrationFailureApiTest extends ApiTestSupport {
     void DB_기록이_실패하면_영상과_썸네일_파일을_모두_지우고_500이다() throws Exception {
         doThrow(new DataAccessResourceFailureException("DB 내려감")).when(repositorySpy).save(any());
 
-        mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
                         .file(new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", JPEG_BYTES))
                         .param("title", "실패할 방송"))

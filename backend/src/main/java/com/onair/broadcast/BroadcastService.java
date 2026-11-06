@@ -1,5 +1,7 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AppUser;
+import com.onair.auth.AppUserRepository;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.core.io.Resource;
@@ -17,16 +19,23 @@ class BroadcastService {
     private final BroadcastRepository repository;
     private final MediaStorage storage;
     private final RegistrationRules rules;
+    private final AppUserRepository users;
     private final Clock clock = Clock.systemUTC();
 
-    BroadcastService(BroadcastRepository repository, MediaStorage storage, RegistrationRules rules) {
+    BroadcastService(BroadcastRepository repository, MediaStorage storage, RegistrationRules rules,
+            AppUserRepository users) {
+        this.users = users;
         this.repository = repository;
         this.storage = storage;
         this.rules = rules;
     }
 
-    /** 등록 흐름: 입력 검증, 파일 저장, DB 기록, 확정 순이다. 중간에 실패하면 저장한 파일이 모두 지워진다. */
-    Broadcast register(RegistrationForm form) {
+    /**
+     * 등록 흐름: 로그인 확인, 입력 검증, 파일 저장, DB 기록, 확정 순이다. 중간에 실패하면 저장한 파일이 모두 지워진다.
+     * userId는 요청한 사용자이고 로그인하지 않았으면 null이다. 이 사용자가 방송의 소유자가 된다.
+     */
+    Broadcast register(RegistrationForm form, Long userId) {
+        AppUser owner = requireUser(userId);
         RegisterRecordingCommand command = rules.validate(form);
 
         try (MediaStorage.Batch batch = storage.begin()) {
@@ -43,10 +52,17 @@ class BroadcastService {
                     command.duration(),
                     thumbnailKey);
             RecordingBroadcast saved = repository.save(
-                    new RecordingBroadcast(command.title(), video, clock.instant()));
+                    new RecordingBroadcast(command.title(), video, clock.instant(), owner));
             batch.commit();
             return saved;
         }
+    }
+
+    private AppUser requireUser(Long userId) {
+        if (userId == null) {
+            throw new AuthenticationRequiredException();
+        }
+        return users.findById(userId).orElseThrow(AuthenticationRequiredException::new);
     }
 
     /** 업로드 정책(크기 상한, 제목 길이). 화면이 서버와 같은 값으로 미리 검사하도록 알려 준다. */

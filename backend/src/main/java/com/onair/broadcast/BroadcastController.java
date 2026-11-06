@@ -1,5 +1,6 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AuthenticatedUser;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRange;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,9 +35,10 @@ class BroadcastController {
             @RequestParam(required = false) String title,
             @RequestParam(required = false) MultipartFile video,
             @RequestParam(required = false) MultipartFile thumbnail,
-            @RequestParam(required = false) String durationSeconds) {
+            @RequestParam(required = false) String durationSeconds,
+            @AuthenticationPrincipal AuthenticatedUser user) {
         Broadcast created = service.register(
-                new RegistrationForm(title, video, thumbnail, durationSeconds));
+                new RegistrationForm(title, video, thumbnail, durationSeconds), user == null ? null : user.id());
         return ResponseEntity
                 .created(URI.create(BroadcastResponses.location(created.getId())))
                 .body(BroadcastResponses.detail(created));
