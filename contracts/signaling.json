@@ -21,6 +21,7 @@
     "viewer-count": { "server->broadcaster": ["count", "max"] }
   },
   "rejectionReasons": [
+    "not-owner",
     "invalid-key",
     "already-broadcasting",
     "ended",

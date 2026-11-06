@@ -82,11 +82,12 @@ public class LiveBroadcasting {
     }
 
     /**
-     * 송출자로 연결한다. 방송이 없거나, 종료됐거나, 키가 다르거나, 이미 송출자가 있으면 거절한다.
+     * 송출자로 연결한다. 방송이 없거나, 종료됐거나, 소유자가 아니거나, 키가 다르거나, 이미 송출자가 있으면 이 순서로 거절한다.
+     * userId는 연결을 맺을 때의 로그인 사용자이고 로그인하지 않았으면 null이다.
      * 결과는 peer에게도 보낸다(joined 또는 rejected). 거절하면 연결을 닫는다.
      */
-    public synchronized JoinResult joinAsBroadcaster(long broadcastId, String streamKey, Peer peer) {
-        JoinResult result = transaction.execute(status -> check(broadcastId, streamKey, peer));
+    public synchronized JoinResult joinAsBroadcaster(long broadcastId, String streamKey, Long userId, Peer peer) {
+        JoinResult result = transaction.execute(status -> check(broadcastId, streamKey, userId, peer));
         if (result == null || !result.isAccepted()) {
             return reject(peer, result);
         }
@@ -245,8 +246,11 @@ public class LiveBroadcasting {
         });
     }
 
-    private JoinResult check(long broadcastId, String streamKey, Peer peer) {
+    private JoinResult check(long broadcastId, String streamKey, Long userId, Peer peer) {
         return checkOnAir(broadcastId, live -> {
+            if (userId == null || !userId.equals(live.getOwner().getId())) {
+                return JoinResult.Rejection.NOT_OWNER;
+            }
             if (!live.matchesStreamKey(streamKey)) {
                 return JoinResult.Rejection.INVALID_KEY;
             }

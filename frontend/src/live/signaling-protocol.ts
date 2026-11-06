@@ -18,6 +18,7 @@ export const MessageType = {
 } as const
 
 export const RejectionReason = {
+  NotOwner: 'not-owner',
   InvalidKey: 'invalid-key',
   AlreadyBroadcasting: 'already-broadcasting',
   Ended: 'ended',
@@ -165,6 +166,8 @@ export const VIEW_ALREADY_JOINED_MESSAGE = '이미 이 방송을 보고 있는 �
 /** 송출 시작이 거절되었을 때 사용자에게 보여 줄 문구. */
 export function broadcasterRejectionMessage(reason: RejectionReason | null): string {
   switch (reason) {
+    case RejectionReason.NotOwner:
+      return '이 방송의 소유자만 송출할 수 있습니다. 방송을 등록한 계정으로 로그인해 주세요.'
     case RejectionReason.InvalidKey:
       return '송출 키가 맞지 않아 송출을 시작하지 못했습니다.'
     case RejectionReason.AlreadyBroadcasting:

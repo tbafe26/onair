@@ -72,11 +72,15 @@ class SignalingWebSocketTest {
         return RestClient.create("http://localhost:" + port);
     }
 
+    /** 마지막으로 시작한 방송의 소유자 쿠키. */
+    String ownerCookie;
+
     String 시작한다() {
+        ownerCookie = 로그인한_쿠키();
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("title", "통합 테스트 라이브");
         return rest().post().uri("/api/broadcasts/live")
-                .header("Cookie", 로그인한_쿠키())
+                .header("Cookie", ownerCookie)
                 .header(Csrf.HEADER, Csrf.TOKEN)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body)
@@ -85,8 +89,16 @@ class SignalingWebSocketTest {
     }
 
     WebSocketSession 연결한다(int broadcastId, String origin, Inbox inbox) throws Exception {
+        return 연결한다(broadcastId, origin, inbox, null);
+    }
+
+    /** cookie가 null이면 로그인하지 않은 연결이다. */
+    WebSocketSession 연결한다(int broadcastId, String origin, Inbox inbox, String cookie) throws Exception {
         WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
         headers.add(HttpHeaders.ORIGIN, origin);
+        if (cookie != null) {
+            headers.add(HttpHeaders.COOKIE, cookie);
+        }
         return new StandardWebSocketClient()
                 .execute(inbox, headers, URI.create("ws://localhost:" + port + "/api/broadcasts/" + broadcastId + "/signal"))
                 .get(10, TimeUnit.SECONDS);
@@ -100,7 +112,7 @@ class SignalingWebSocketTest {
 
         // 잘못된 키는 사유와 함께 거절되고 연결이 닫힌다.
         Inbox intruder = new Inbox();
-        WebSocketSession intruderSession = 연결한다(id, DEV_SERVER_ORIGIN, intruder);
+        WebSocketSession intruderSession = 연결한다(id, DEV_SERVER_ORIGIN, intruder, ownerCookie);
         intruderSession.sendMessage(new TextMessage("{\"type\":\"join-broadcaster\",\"streamKey\":\"wrong-key\"}"));
         String rejected = intruder.next();
         assertThat((String) JsonPath.read(rejected, "$.type")).isEqualTo("rejected");
@@ -109,7 +121,7 @@ class SignalingWebSocketTest {
 
         // 올바른 키로 연결하고 end를 보내면 ended를 받고 방송이 종료로 기록된다.
         Inbox broadcaster = new Inbox();
-        WebSocketSession session = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster);
+        WebSocketSession session = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster, ownerCookie);
         session.sendMessage(new TextMessage("{\"type\":\"join-broadcaster\",\"streamKey\":\"" + streamKey + "\"}"));
         String joined = broadcaster.next();
         assertThat((String) JsonPath.read(joined, "$.type")).isEqualTo("joined");
@@ -130,7 +142,7 @@ class SignalingWebSocketTest {
         String streamKey = JsonPath.read(started, "$.streamKey");
 
         Inbox broadcaster = new Inbox();
-        WebSocketSession broadcasterSession = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster);
+        WebSocketSession broadcasterSession = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster, ownerCookie);
         broadcasterSession.sendMessage(new TextMessage("{\"type\":\"join-broadcaster\",\"streamKey\":\"" + streamKey + "\"}"));
         assertThat((String) JsonPath.read(broadcaster.next(), "$.type")).isEqualTo("joined");
 
@@ -178,7 +190,7 @@ class SignalingWebSocketTest {
         int id = JsonPath.read(started, "$.id");
         String streamKey = JsonPath.read(started, "$.streamKey");
         Inbox broadcaster = new Inbox();
-        WebSocketSession session = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster);
+        WebSocketSession session = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster, ownerCookie);
         session.sendMessage(new TextMessage("{\"type\":\"join-broadcaster\",\"streamKey\":\"" + streamKey + "\"}"));
         broadcaster.next();
         session.sendMessage(new TextMessage("{\"type\":\"end\"}"));
@@ -192,6 +204,28 @@ class SignalingWebSocketTest {
         assertThat((String) JsonPath.read(rejected, "$.type")).isEqualTo("rejected");
         assertThat((String) JsonPath.read(rejected, "$.reason")).isEqualTo("ended");
         assertThat(viewer.closed.poll(10, TimeUnit.SECONDS)).isNotNull();
+    }
+
+    @Test
+    void 로그인하지_않은_연결과_다른_사용자의_연결은_올바른_키여도_not_owner로_거절된다() throws Exception {
+        String started = 시작한다();
+        int id = JsonPath.read(started, "$.id");
+        String streamKey = JsonPath.read(started, "$.streamKey");
+        String join = "{\"type\":\"join-broadcaster\",\"streamKey\":\"" + streamKey + "\"}";
+
+        for (String cookie : new String[] {null, 로그인한_쿠키()}) {
+            Inbox stranger = new Inbox();
+            WebSocketSession session = 연결한다(id, DEV_SERVER_ORIGIN, stranger, cookie);
+            session.sendMessage(new TextMessage(join));
+            String rejected = stranger.next();
+            assertThat((String) JsonPath.read(rejected, "$.type")).isEqualTo("rejected");
+            assertThat((String) JsonPath.read(rejected, "$.reason")).isEqualTo("not-owner");
+            assertThat(stranger.closed.poll(10, TimeUnit.SECONDS)).isNotNull();
+        }
+
+        Inbox owner = new Inbox();
+        연결한다(id, DEV_SERVER_ORIGIN, owner, ownerCookie).sendMessage(new TextMessage(join));
+        assertThat((String) JsonPath.read(owner.next(), "$.type")).isEqualTo("joined");
     }
 
     @Test
