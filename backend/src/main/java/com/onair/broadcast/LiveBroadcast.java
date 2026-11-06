@@ -7,6 +7,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 라이브방송: 송출 한 번이 방송 하나다. 등록 시각(createdAt)이 송출 시작 시각이다.
@@ -46,6 +47,7 @@ public class LiveBroadcast extends Broadcast {
         return status;
     }
 
+    @Override
     boolean isOnAir() {
         return status == LiveStatus.ON_AIR;
     }
@@ -73,5 +75,35 @@ public class LiveBroadcast extends Broadcast {
     @Override
     String thumbnailKey() {
         return thumbnailKey;
+    }
+
+    @Override
+    boolean canDeleteNow() {
+        return !isOnAir();
+    }
+
+    @Override
+    boolean acceptsCommentsNow() {
+        return isOnAir();
+    }
+
+    @Override
+    boolean commentsDeletable() {
+        return false;
+    }
+
+    @Override
+    boolean isChat() {
+        return true;
+    }
+
+    @Override
+    boolean canEndStream() {
+        return true;
+    }
+
+    @Override
+    List<String> ownedFileKeys() {
+        return thumbnailKey == null ? List.of() : List.of(thumbnailKey);
     }
 }
