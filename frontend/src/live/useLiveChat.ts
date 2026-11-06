@@ -12,5 +12,5 @@ export function useLiveChat(broadcastId: number) {
   }, [chat])
 
   const state = useSyncExternalStore(chat.subscribe, chat.state)
-  return { state, send: chat.send, retry: chat.join }
+  return { state, send: chat.send, retry: chat.join, onReconnected: chat.onReconnected }
 }

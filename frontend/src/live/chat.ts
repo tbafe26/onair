@@ -57,6 +57,8 @@ function merge<T extends { id: number }>(existing: T[], incoming: T[]): T[] {
 export interface LiveChat {
   state(): ChatState
   subscribe(listener: () => void): () => void
+  /** 끊겼다가 다시 연결해 놓친 채팅을 채운 뒤에 부른다. 처음 연결에서는 부르지 않는다. 돌려주는 함수로 해지한다. */
+  onReconnected(listener: () => void): () => void
   /** 채팅을 시작한다. dispose나 failed 뒤에 다시 부르면 처음부터 다시 연결한다. */
   join(): void
   /** 채팅을 REST로 쓴다. 실패하면 던진다. 쓴 채팅은 목록에 바로 반영한다. */
@@ -84,6 +86,7 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
   let channel: ChatChannel | null = null
   let cancelRetry: (() => void) | null = null
   const listeners = new Set<() => void>()
+  const reconnectListeners = new Set<() => void>()
   const schedule = deps.schedule ?? defaultSchedule
 
   function set(next: ChatState) {
@@ -187,6 +190,7 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
     channel = opened
 
     try {
+      const reconnecting = everLoaded
       const missed = await loadMissed()
       if (session !== generation) return
       comments = merge(merge(comments, missed), connection.buffered)
@@ -194,6 +198,7 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
       everLoaded = true
       connection.loaded = true
       set(connection.endedEarly ? { phase: 'ended', comments, donations } : { phase: 'open', comments, donations })
+      if (reconnecting) reconnectListeners.forEach((listener) => listener())
     } catch {
       connectionFailed(session)
     }
@@ -206,6 +211,13 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
+      }
+    },
+
+    onReconnected(listener) {
+      reconnectListeners.add(listener)
+      return () => {
+        reconnectListeners.delete(listener)
       }
     },
 
