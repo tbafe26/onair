@@ -11,7 +11,10 @@ import org.springframework.http.HttpRange;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -62,6 +65,25 @@ class BroadcastController {
     @GetMapping("/{id}")
     BroadcastDetail detail(@PathVariable long id) {
         return service.detail(id);
+    }
+
+    /** 소유자만 제목을 고칠 수 있다. */
+    @PatchMapping("/{id}")
+    BroadcastDetail rename(
+            @PathVariable long id,
+            @RequestBody TitleRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user) {
+        return service.rename(id, user == null ? null : user.id(), request.title());
+    }
+
+    /** 소유자만 지울 수 있다. 방송 중인 라이브방송은 409다. */
+    @DeleteMapping("/{id}")
+    ResponseEntity<Void> delete(@PathVariable long id, @AuthenticationPrincipal AuthenticatedUser user) {
+        service.delete(id, user == null ? null : user.id());
+        return ResponseEntity.noContent().build();
+    }
+
+    record TitleRequest(String title) {
     }
 
     @GetMapping("/{id}/thumbnail")

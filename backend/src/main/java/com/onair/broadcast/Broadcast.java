@@ -61,6 +61,15 @@ public abstract class Broadcast {
         return owner;
     }
 
+    /** 소유자가 이 사용자인지. 소유자가 없는 방송(옛 데이터)은 누구의 것도 아니다. */
+    boolean isOwnedBy(long userId) {
+        return owner != null && owner.getId() == userId;
+    }
+
+    void rename(String newTitle) {
+        this.title = newTitle;
+    }
+
     public abstract BroadcastKind getKind();
 
     public Instant getCreatedAt() {

@@ -5,6 +5,7 @@ import { BroadcastCreatePage } from './pages/BroadcastCreatePage'
 import { BroadcastDetailPage } from './pages/BroadcastDetailPage'
 import { BroadcastListPage } from './pages/BroadcastListPage'
 import { LiveBroadcastPage } from './pages/LiveBroadcastPage'
+import { MyBroadcastsPage } from './pages/MyBroadcastsPage'
 import { LoginPage } from './pages/LoginPage'
 import { SignupPage } from './pages/SignupPage'
 
@@ -30,6 +31,14 @@ export const routes: RouteObject[] = [
         ),
       },
       { path: '/broadcasts/:id', element: <BroadcastDetailPage /> },
+      {
+        path: '/me/broadcasts',
+        element: (
+          <RequireLogin>
+            <MyBroadcastsPage />
+          </RequireLogin>
+        ),
+      },
       { path: '/login', element: <LoginPage /> },
       { path: '/signup', element: <SignupPage /> },
     ],

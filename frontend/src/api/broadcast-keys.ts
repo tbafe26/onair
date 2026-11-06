@@ -7,6 +7,8 @@ export const broadcastKeys = {
   list: () => [...broadcastKeys.all, 'list'] as const,
   /** 목록 화면의 무한 조회. 캐시 모양이 달라 list와 키를 나눈다. */
   infinite: (kind: BroadcastKind) => [...broadcastKeys.all, 'infinite', kind] as const,
+  /** 내 방송 화면의 무한 조회 */
+  mine: () => [...broadcastKeys.all, 'mine'] as const,
   detail: (id: string) => [...broadcastKeys.all, 'detail', id] as const,
   /** 서버의 업로드 정책. 방송 데이터와 무관해 등록 후 무효화 대상이 아니다. */
   uploadPolicy: () => ['upload-policy'] as const,

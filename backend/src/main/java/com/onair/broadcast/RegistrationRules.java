@@ -90,6 +90,16 @@ class RegistrationRules {
         return new StartLiveCommand(title, thumbnail);
     }
 
+    /** 제목만 검사한다(제목 수정용). 규칙은 등록과 같고, 틀리면 InvalidRequestException이다. */
+    String validateTitle(String rawTitle) {
+        List<FieldViolation> violations = new ArrayList<>();
+        String title = checkTitle(rawTitle, violations);
+        if (!violations.isEmpty()) {
+            throw new InvalidRequestException(violations);
+        }
+        return title;
+    }
+
     private static String checkTitle(String rawTitle, List<FieldViolation> violations) {
         String title = trimWhiteSpace(rawTitle);
         if (title.isEmpty()) {

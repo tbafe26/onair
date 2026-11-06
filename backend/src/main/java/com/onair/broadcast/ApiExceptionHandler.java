@@ -20,7 +20,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** 모든 API 오류를 ProblemDetail(RFC 9457)로 바꾼다. 상태 코드: 400, 404, 413, 416, 500. */
+/** 모든 API 오류를 ProblemDetail(RFC 9457)로 바꾼다. 상태 코드: 400, 401, 403, 404, 409, 413, 416, 500. */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
@@ -55,6 +55,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AuthenticationRequiredException.class)
     ResponseEntity<Object> handleAuthenticationRequired(AuthenticationRequiredException e, WebRequest request) {
         return respond(e, problem(HttpStatus.UNAUTHORIZED, "로그인 필요", e.getMessage()), new HttpHeaders(), request);
+    }
+
+    @ExceptionHandler(BroadcastForbiddenException.class)
+    ResponseEntity<Object> handleForbidden(BroadcastForbiddenException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.FORBIDDEN, "권한 없음", e.getMessage()), new HttpHeaders(), request);
+    }
+
+    @ExceptionHandler(LiveOnAirException.class)
+    ResponseEntity<Object> handleLiveOnAir(LiveOnAirException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.CONFLICT, "방송 중", e.getMessage()), new HttpHeaders(), request);
     }
 
     @ExceptionHandler(BroadcastNotFoundException.class)
