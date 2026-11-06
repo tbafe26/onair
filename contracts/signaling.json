@@ -1,0 +1,32 @@
+{
+  "$comment": "시그널링 계약. 백엔드(SignalMessage, JoinResult.Rejection)와 프런트(live/signaling-protocol.ts)가 각자 테스트로 이 파일과 대조한다. 메시지나 사유를 바꾸면 이 파일과 양쪽을 함께 고친다. 방향별 값은 그 방향으로 가는 메시지의 필드 이름이다.",
+  "messages": {
+    "join-broadcaster": { "broadcaster->server": ["streamKey"] },
+    "join-viewer": { "viewer->server": [] },
+    "joined": { "server->broadcaster": ["broadcastId"], "server->viewer": ["viewerId"] },
+    "rejected": { "server->broadcaster": ["reason"], "server->viewer": ["reason"] },
+    "end": { "broadcaster->server": [] },
+    "heartbeat": { "broadcaster->server": [] },
+    "ended": { "server->broadcaster": [], "server->viewer": [] },
+    "offer": { "broadcaster->server": ["to", "sdp"], "server->viewer": ["sdp"] },
+    "answer": { "viewer->server": ["sdp"], "server->broadcaster": ["from", "sdp"] },
+    "candidate": {
+      "broadcaster->server": ["to", "candidate"],
+      "viewer->server": ["candidate"],
+      "server->broadcaster": ["from", "candidate"],
+      "server->viewer": ["candidate"]
+    },
+    "viewer-joined": { "server->broadcaster": ["viewerId"] },
+    "viewer-left": { "server->broadcaster": ["viewerId"] },
+    "viewer-count": { "server->broadcaster": ["count", "max"] }
+  },
+  "rejectionReasons": [
+    "invalid-key",
+    "already-broadcasting",
+    "ended",
+    "not-found",
+    "not-broadcasting",
+    "already-joined",
+    "full"
+  ]
+}

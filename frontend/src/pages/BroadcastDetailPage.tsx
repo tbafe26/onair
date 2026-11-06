@@ -139,9 +139,7 @@ function LiveViewer({ broadcastId, thumbnailUrl }: { broadcastId: number; thumbn
   if (viewer.phase === 'connecting') return <LiveStatusBox text="연결 중…" thumbnailUrl={thumbnailUrl} />
   if (viewer.phase === 'ended') return <LiveStatusBox text={ENDED_TEXT} thumbnailUrl={thumbnailUrl} />
   if (viewer.phase === 'full') return <LiveStatusBox text="시청자가 많아 지금은 볼 수 없습니다" thumbnailUrl={thumbnailUrl} />
-  if (viewer.phase === 'failed') {
-    return <LiveStatusBox text="연결하지 못했습니다. 잠시 뒤 새로고침해 다시 시도해 주세요." thumbnailUrl={thumbnailUrl} />
-  }
+  if (viewer.phase === 'failed') return <LiveStatusBox text={viewer.message} thumbnailUrl={thumbnailUrl} />
   return (
     <div className="relative aspect-video w-full bg-black">
       <video

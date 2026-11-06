@@ -3,10 +3,9 @@ import {
   StartRejectedError,
   createLiveBroadcaster,
   type BroadcasterDeps,
-  type SignalingChannel,
-  type SignalingHandlers,
-  type SignalMessage,
 } from './broadcaster'
+import { START_FAILURE_MESSAGE } from './signaling-protocol'
+import type { SignalingChannel, SignalingHandlers, SignalMessage } from './signaling-protocol'
 import { createFakePeer, type FakePeer } from '../test/fakePeer'
 
 function fakeStream() {
@@ -200,16 +199,21 @@ describe('송출 시작', () => {
     expect(broadcaster.state().phase).toBe('onAir')
   })
 
-  it('서버가 송출자를 거절하면 미리보기로 돌아가 이유를 보여 주고 카메라는 유지한다', async () => {
+  it.each([
+    ['invalid-key', '송출 키가 맞지 않아 송출을 시작하지 못했습니다.'],
+    ['already-broadcasting', '이미 다른 곳에서 송출 중인 방송입니다.'],
+    ['ended', '이미 종료된 방송이라 송출을 시작하지 못했습니다.'],
+    ['not-found', '방송을 찾을 수 없어 송출을 시작하지 못했습니다.'],
+    ['full', START_FAILURE_MESSAGE],
+  ])('서버가 송출자를 %s로 거절하면 미리보기로 돌아가 그 이유를 보여 주고 카메라는 유지한다', async (reason, message) => {
     const { broadcaster, env } = await previewing()
 
     const started = broadcaster.start({ title: '제목', thumbnail: null })
     await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'rejected', reason: 'invalid-key' })
+    env.server.send({ type: 'rejected', reason })
     await started
 
-    expect(broadcaster.state()).toMatchObject({ phase: 'previewing' })
-    expect(broadcaster.state()).toHaveProperty('startFailure', expect.stringContaining('송출을 시작하지 못했습니다'))
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: message })
     expect(env.close).toHaveBeenCalled()
     env.camera.tracks.forEach((track) => expect(track.stop).not.toHaveBeenCalled())
   })
