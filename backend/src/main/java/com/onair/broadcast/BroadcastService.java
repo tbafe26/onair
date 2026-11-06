@@ -3,7 +3,6 @@ package com.onair.broadcast;
 import com.onair.auth.AppUser;
 import com.onair.auth.AppUserRepository;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -73,7 +72,7 @@ class BroadcastService {
      */
     @Transactional
     BroadcastDetail rename(long id, Long userId, String rawTitle) {
-        Broadcast broadcast = findOwned(id, userId);
+        Broadcast broadcast = OwnedBroadcasts.find(repository, id, userId);
         broadcast.rename(rules.validateTitle(rawTitle));
         return BroadcastResponses.detail(broadcast);
     }
@@ -85,17 +84,11 @@ class BroadcastService {
      */
     void delete(long id, Long userId) {
         List<String> keys = transaction.execute(status -> {
-            Broadcast broadcast = findOwned(id, userId);
-            if (broadcast instanceof LiveBroadcast live && live.isOnAir()) {
+            Broadcast broadcast = OwnedBroadcasts.find(repository, id, userId);
+            if (!broadcast.canDeleteNow()) {
                 throw new LiveOnAirException(id);
             }
-            List<String> fileKeys = new ArrayList<>();
-            if (broadcast instanceof RecordingBroadcast recording) {
-                fileKeys.add(recording.videoStorageKey());
-            }
-            if (broadcast.thumbnailKey() != null) {
-                fileKeys.add(broadcast.thumbnailKey());
-            }
+            List<String> fileKeys = broadcast.ownedFileKeys();
             comments.deleteAllOf(id);
             repository.delete(broadcast);
             return fileKeys;
@@ -107,15 +100,6 @@ class BroadcastService {
                 log.warn("방송은 지웠지만 파일을 지우지 못했습니다: {}", key, e);
             }
         }
-    }
-
-    private Broadcast findOwned(long id, Long userId) {
-        long requester = Requester.id(userId);
-        Broadcast broadcast = repository.findById(id).orElseThrow(() -> new BroadcastNotFoundException(id));
-        if (!broadcast.isOwnedBy(requester)) {
-            throw new BroadcastForbiddenException(id);
-        }
-        return broadcast;
     }
 
     /** 업로드 정책(크기 상한, 제목 길이). 화면이 서버와 같은 값으로 미리 검사하도록 알려 준다. */
