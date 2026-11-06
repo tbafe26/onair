@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
 import {
   decodeFailure,
@@ -8,6 +8,8 @@ import {
   type LiveBroadcastDetail,
   type RecordingBroadcastDetail,
 } from '../api/broadcasts'
+import { useAuth } from '../auth/auth-context'
+import { BroadcastOwnerActions } from '../components/BroadcastOwnerActions'
 import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
@@ -47,6 +49,18 @@ export function BroadcastDetailPage() {
   }
 }
 
+/** 소유자에게만 "제목 수정"·"삭제"를 보여 준다. 화면에서 숨기는 것은 보조 수단이고 권한은 서버가 검사한다. */
+function OwnerActions({ broadcast }: { broadcast: { id: number; title: string; owner: { id: number } } }) {
+  const { state } = useAuth()
+  const navigate = useNavigate()
+  if (state.status !== 'user' || state.user.id !== broadcast.owner.id) return null
+  return (
+    <div className="mt-3 flex gap-2">
+      <BroadcastOwnerActions broadcast={broadcast} onDeleted={() => void navigate('/')} />
+    </div>
+  )
+}
+
 function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDetail }) {
   // 넓은 화면은 플레이어 | 368px 패널, 1024px 미만이면 패널이 플레이어 아래로 내려간다.
   return (
@@ -68,6 +82,7 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
           <p className="mt-1 text-sub">
             <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
           </p>
+          <OwnerActions broadcast={data} />
         </div>
       </section>
       <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">
@@ -101,6 +116,7 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
               종료 <time dateTime={data.endedAt}>{formatDateTime(data.endedAt)}</time>
             </p>
           )}
+          <OwnerActions broadcast={data} />
         </div>
       </section>
       <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">

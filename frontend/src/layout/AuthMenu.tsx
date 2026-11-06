@@ -88,6 +88,14 @@ function ProfileMenu({ nickname, compact }: { nickname: string; compact: boolean
           className="absolute top-full right-0 z-30 mt-2 min-w-44 rounded-xl border border-border bg-card p-1.5 shadow-lg"
         >
           <p className="truncate px-3 py-2 text-sm text-sub">{nickname}</p>
+          <Link
+            to="/me/broadcasts"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block w-full rounded-lg px-3 py-2 text-left font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            내 방송
+          </Link>
           <button
             type="button"
             role="menuitem"

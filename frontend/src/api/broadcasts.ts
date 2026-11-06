@@ -91,6 +91,23 @@ export async function fetchBroadcasts(
   return response.data
 }
 
+/** 내 방송 목록. 로그인이 필요하고, before 커서는 fetchBroadcasts와 같다. */
+export async function fetchMyBroadcasts(before?: number): Promise<BroadcastPage> {
+  const response = await apiClient.get<BroadcastPage>('/api/me/broadcasts', { params: { before } })
+  return response.data
+}
+
+/** 제목을 고친다(소유자만). 고친 상세를 돌려준다. */
+export async function renameBroadcast(id: number, title: string): Promise<BroadcastDetail> {
+  const response = await apiClient.patch<BroadcastDetail>(`/api/broadcasts/${id}`, { title })
+  return response.data
+}
+
+/** 방송을 지운다(소유자만). 방송 중인 라이브방송은 409다. */
+export async function deleteBroadcast(id: number): Promise<void> {
+  await apiClient.delete(`/api/broadcasts/${id}`)
+}
+
 export async function fetchUploadPolicy(): Promise<UploadPolicy> {
   const response = await apiClient.get<UploadPolicy>('/api/broadcasts/upload-policy')
   return response.data
@@ -144,6 +161,8 @@ export type ApiFailure =
   | { kind: 'notFound' }
   /** 로그인하지 않았거나 로그인 정보가 맞지 않다(401) */
   | { kind: 'unauthorized' }
+  /** 로그인했지만 소유자가 아니다(403) */
+  | { kind: 'forbidden' }
   /** 서버의 현재 상태와 맞지 않는 요청(409). 이유는 서버가 알려 준 메시지다. */
   | { kind: 'conflict'; message: string }
   /** 필드 이름(title, video, thumbnail, durationSeconds)별 이유 */
@@ -158,6 +177,7 @@ export function decodeFailure(error: unknown): ApiFailure {
   const { status } = error.response
   if (status === 404) return { kind: 'notFound' }
   if (status === 401) return { kind: 'unauthorized' }
+  if (status === 403) return { kind: 'forbidden' }
   const data: unknown = error.response.data
   if (typeof data !== 'object' || data === null) return { kind: 'unknown' }
   const { errors, maxBytes, detail } = data as {
