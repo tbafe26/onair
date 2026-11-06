@@ -1,48 +1,17 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { beforeEach, expect, it, vi } from 'vitest'
-import type { SignalingChannel, SignalingHandlers, SignalMessage } from '../live/signaling-protocol'
-import type { ViewerDeps } from '../live/viewer'
-import { createFakePeer, type FakePeer } from '../test/fakePeer'
+import { expect, it } from 'vitest'
+import type { ViewerState } from '../live/viewer'
+import { fakeStream } from '../test/fakeLive'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
-// 실제 WebSocket과 PeerConnection 대신 가짜를 넣는다. 서버 쪽 동작은 fake.server로 일으킨다.
-const fake = vi.hoisted(() => ({
-  deps: {} as ViewerDeps,
-  sent: [] as SignalMessage[],
-  handlers: null as SignalingHandlers | null,
-  peers: [] as FakePeer[],
-  closeSignaling: null as (() => void) | null,
-}))
+// 화면 테스트는 가짜 시청 모듈의 상태를 직접 바꿔 화면만 확인한다. 시그널링 동작은 live/viewer.test.ts가 맡는다.
+type App = ReturnType<typeof renderApp>
 
-vi.mock('../live/browser-deps', () => ({
-  browserViewerDeps: new Proxy({} as ViewerDeps, {
-    get: (_target, key: string) => (fake.deps as unknown as Record<string, unknown>)[key],
-  }),
-}))
-
-beforeEach(() => {
-  fake.sent = []
-  fake.handlers = null
-  fake.peers = []
-  fake.closeSignaling = vi.fn()
-  fake.deps = {
-    openSignaling: async (_id: number, handlers: SignalingHandlers): Promise<SignalingChannel> => {
-      fake.handlers = handlers
-      return { send: (message) => void fake.sent.push(message), close: fake.closeSignaling as () => void }
-    },
-    createPeerConnection: () => {
-      const peer = createFakePeer()
-      fake.peers.push(peer)
-      return peer
-    },
-  }
-})
-
-function serverSends(message: SignalMessage) {
-  act(() => fake.handlers?.onMessage(message))
+function setViewer(app: App, state: ViewerState) {
+  act(() => app.fake.viewer.setState(state))
 }
 
 function liveDetail(status: 'ON_AIR' | 'ENDED', endedAt: string | null) {
@@ -89,9 +58,11 @@ function stubLive(status: 'ON_AIR' | 'ENDED', endedAt: string | null) {
 it('방송 중인 라이브방송은 연결 중 문구, 제목, 시작 시각을 보여 주고 종료 시각과 녹화 플레이어는 없다', async () => {
   stubLive('ON_AIR', null)
 
-  renderApp('/broadcasts/5')
+  const app = renderApp('/broadcasts/5')
 
   expect(await screen.findByRole('heading', { name: '상세 라이브' })).toBeInTheDocument()
+  expect(app.fake.createViewer).toHaveBeenCalledWith(5)
+  expect(app.fake.viewer.join).toHaveBeenCalledTimes(1)
   expect(screen.getByRole('status')).toHaveTextContent('연결 중…')
   expect(screen.getByText(/^시작/)).toHaveTextContent('2026.03.15')
   expect(screen.queryByText(/^종료/)).not.toBeInTheDocument()
@@ -102,10 +73,10 @@ it('방송 중인 라이브방송은 연결 중 문구, 제목, 시작 시각을
 it('종료된 라이브방송은 종료 문구와 시작·종료 시각을 보여 주고 시청 연결을 만들지 않는다', async () => {
   stubLive('ENDED', '2026-03-15T13:30:00Z')
 
-  renderApp('/broadcasts/5')
+  const app = renderApp('/broadcasts/5')
 
   expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
-  expect(fake.handlers).toBeNull()
+  expect(app.fake.createViewer).not.toHaveBeenCalled()
   expect(screen.getByText(/^시작/)).toBeInTheDocument()
   expect(screen.getByText(/^종료/)).toBeInTheDocument()
 })
@@ -150,17 +121,16 @@ it('라이브방송 상세에도 다른 방송 패널이 있다', async () => {
 
 async function openOnAir() {
   stubLive('ON_AIR', null)
-  renderApp('/broadcasts/5')
+  const app = renderApp('/broadcasts/5')
   await screen.findByRole('heading', { name: '상세 라이브' })
-  await waitFor(() => expect(fake.sent).toEqual([{ type: 'join-viewer' }]))
+  await waitFor(() => expect(app.fake.viewer.join).toHaveBeenCalled())
+  return app
 }
 
 async function startPlaying() {
-  await openOnAir()
-  serverSends({ type: 'joined', viewerId: '1' })
-  serverSends({ type: 'offer', sdp: 'remote-offer' })
-  await waitFor(() => expect(fake.peers).toHaveLength(1))
-  act(() => fake.peers[0].emitTrack({ id: 'remote' } as unknown as MediaStream))
+  const app = await openOnAir()
+  setViewer(app, { phase: 'playing', stream: fakeStream() })
+  return app
 }
 
 it('영상이 오면 소리 없이 자동 재생되는 영상과 소리 켜기 버튼이 보이고 재생 막대는 없다', async () => {
@@ -186,47 +156,40 @@ it('소리 켜기를 누르면 소리가 켜지고 버튼이 사라진다', asyn
 })
 
 it('시청 중 송출이 끝나면 영상 자리에 종료 문구가 나온다', async () => {
-  await startPlaying()
+  const app = await startPlaying()
   await screen.findByLabelText('라이브 영상')
 
-  serverSends({ type: 'ended' })
+  setViewer(app, { phase: 'ended' })
 
   expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
   expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
 })
 
-it('목록에는 방송 중이었지만 이미 끝난 방송이면 종료 문구가 나온다', async () => {
-  await openOnAir()
-
-  serverSends({ type: 'rejected', reason: 'ended' })
-
-  expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
-})
-
 it('시청자가 가득 찼으면 상한 안내 문구가 나온다', async () => {
-  await openOnAir()
+  const app = await openOnAir()
 
-  serverSends({ type: 'rejected', reason: 'full' })
+  setViewer(app, { phase: 'full' })
 
   expect(await screen.findByText('시청자가 많아 지금은 볼 수 없습니다')).toBeInTheDocument()
   expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
 })
 
-it('연결에 실패하면 실패 문구가 나온다', async () => {
-  await openOnAir()
+it('연결에 실패하면 모듈이 준 실패 문구가 나온다', async () => {
+  const app = await openOnAir()
 
-  act(() => fake.handlers?.onClose())
+  setViewer(app, { phase: 'failed', message: '방송에 연결하지 못했습니다.' })
 
   expect(await screen.findByText(/연결하지 못했습니다/)).toBeInTheDocument()
+  expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
 })
 
-it('상세 화면을 떠나면 시청 연결을 정리한다', async () => {
-  await startPlaying()
+it('상세 화면을 떠나면 시청 모듈을 정리한다', async () => {
+  const app = await startPlaying()
   const user = userEvent.setup()
   const panel = await screen.findByRole('complementary', { name: '방송 더보기' })
+  expect(app.fake.viewer.dispose).not.toHaveBeenCalled()
 
   await user.click(await within(panel).findByRole('link', { name: /다른 녹화/ }))
 
-  await waitFor(() => expect(fake.peers[0].closed).toBe(true))
-  expect(fake.closeSignaling).toHaveBeenCalled()
+  await waitFor(() => expect(app.fake.viewer.dispose).toHaveBeenCalled())
 })

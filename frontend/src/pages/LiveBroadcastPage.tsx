@@ -4,7 +4,6 @@ import { useBlocker, useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
 import { Button } from '../components/ui/button'
 import type { CameraFacing, CameraInfo, CameraUnavailableReason } from '../live/broadcaster'
-import { browserBroadcasterDeps } from '../live/browser-deps'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
 import { useThumbnailPicker } from '../hooks/useThumbnailPicker'
 import { useLiveBroadcaster } from '../live/useLiveBroadcaster'
@@ -91,7 +90,7 @@ function Elapsed({ startedAt }: { startedAt: number }) {
 export function LiveBroadcastPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { state, camera, start, end, switchCamera } = useLiveBroadcaster(browserBroadcasterDeps)
+  const { state, camera, start, end, switchCamera } = useLiveBroadcaster()
   const { input } = useBroadcastInput()
   const thumbnail = useThumbnailPicker(input.convertThumbnail)
   const thumbnailInputRef = useRef<HTMLInputElement>(null)

@@ -1,9 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { createLiveBroadcaster, type BroadcasterDeps } from './broadcaster'
+import { useLive } from './live-context'
 
 /** 송출 모듈을 화면에 잇는 얇은 훅. 화면에 들어오면 카메라를 열고, 떠나면 정리한다. */
-export function useLiveBroadcaster(deps: BroadcasterDeps) {
-  const [broadcaster] = useState(() => createLiveBroadcaster(deps))
+export function useLiveBroadcaster() {
+  const live = useLive()
+  const [broadcaster] = useState(() => live.createBroadcaster())
 
   useEffect(() => {
     broadcaster.open()
