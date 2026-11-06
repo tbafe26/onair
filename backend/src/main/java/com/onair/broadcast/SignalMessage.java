@@ -9,10 +9,17 @@ import java.util.Map;
 public record SignalMessage(String type, Map<String, Object> fields) {
 
     public static final String JOIN_BROADCASTER = "join-broadcaster";
+    public static final String JOIN_VIEWER = "join-viewer";
     public static final String JOINED = "joined";
     public static final String REJECTED = "rejected";
     public static final String END = "end";
     public static final String ENDED = "ended";
+    public static final String OFFER = "offer";
+    public static final String ANSWER = "answer";
+    public static final String CANDIDATE = "candidate";
+    public static final String VIEWER_JOINED = "viewer-joined";
+    public static final String VIEWER_LEFT = "viewer-left";
+    public static final String VIEWER_COUNT = "viewer-count";
 
     public SignalMessage {
         fields = Map.copyOf(fields);

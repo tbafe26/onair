@@ -3,6 +3,7 @@ package com.onair.broadcast;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -182,5 +183,196 @@ class LiveBroadcastingTest extends ApiTestSupport {
         live.leave(broadcaster);
 
         assertThat(저장된_방송(started).endedAt()).isEqualTo(endedAt);
+    }
+
+    // --- 시청자 ---
+
+    record OnAir(StartedLive started, RecordingPeer broadcaster) { }
+
+    OnAir 송출을_시작한다(String title) {
+        StartedLive started = 시작한다(title);
+        RecordingPeer broadcaster = new RecordingPeer();
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        broadcaster.received.clear();
+        return new OnAir(started, broadcaster);
+    }
+
+    String 입장한다(OnAir onAir, RecordingPeer viewer) {
+        live.joinAsViewer(onAir.started().broadcastId(), viewer);
+        return viewer.last().text("viewerId");
+    }
+
+    @Test
+    void 시청자가_입장하면_번호를_받고_송출자에게_입장과_시청자_수가_간다() {
+        OnAir onAir = 송출을_시작한다("시청자 입장");
+        RecordingPeer viewer = new RecordingPeer();
+
+        JoinResult result = live.joinAsViewer(onAir.started().broadcastId(), viewer);
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(viewer.types()).containsExactly("joined");
+        String viewerId = viewer.last().text("viewerId");
+        assertThat(viewerId).isNotBlank();
+        assertThat(onAir.broadcaster().types()).containsExactly("viewer-joined", "viewer-count");
+        assertThat(onAir.broadcaster().received.getFirst().text("viewerId")).isEqualTo(viewerId);
+        assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 1);
+    }
+
+    @Test
+    void 시청자마다_다른_번호를_받는다() {
+        OnAir onAir = 송출을_시작한다("번호");
+
+        String first = 입장한다(onAir, new RecordingPeer());
+        String second = 입장한다(onAir, new RecordingPeer());
+
+        assertThat(first).isNotEqualTo(second);
+        assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 2);
+    }
+
+    @Test
+    void 없는_방송과_종료된_방송에는_시청자로_연결할_수_없다() {
+        RecordingPeer missing = new RecordingPeer();
+        assertThat(live.joinAsViewer(9999, missing).rejection()).isEqualTo(JoinResult.Rejection.NOT_FOUND);
+        assertThat(missing.last().text("reason")).isEqualTo("not-found");
+        assertThat(missing.closed).isTrue();
+
+        OnAir onAir = 송출을_시작한다("종료됨");
+        live.relay(onAir.broadcaster(), SignalMessage.of("end"));
+        RecordingPeer late = new RecordingPeer();
+        assertThat(live.joinAsViewer(onAir.started().broadcastId(), late).rejection())
+                .isEqualTo(JoinResult.Rejection.ENDED);
+        assertThat(late.last().text("reason")).isEqualTo("ended");
+        assertThat(late.closed).isTrue();
+    }
+
+    @Test
+    void 송출자가_아직_연결되지_않은_방송은_not_broadcasting으로_거절된다() {
+        StartedLive started = 시작한다("송출자 없음");
+        RecordingPeer viewer = new RecordingPeer();
+
+        JoinResult result = live.joinAsViewer(started.broadcastId(), viewer);
+
+        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.NOT_BROADCASTING);
+        assertThat(viewer.closed).isTrue();
+    }
+
+    @Test
+    void 송출자의_offer는_to로_지정한_시청자에게만_간다() {
+        OnAir onAir = 송출을_시작한다("지정 전달");
+        RecordingPeer target = new RecordingPeer();
+        RecordingPeer other = new RecordingPeer();
+        String targetId = 입장한다(onAir, target);
+        입장한다(onAir, other);
+        target.received.clear();
+        other.received.clear();
+
+        live.relay(onAir.broadcaster(), new SignalMessage("offer", Map.of("to", targetId, "sdp", "v=0")));
+
+        assertThat(target.types()).containsExactly("offer");
+        assertThat(target.last().text("sdp")).isEqualTo("v=0");
+        assertThat(target.last().text("to")).isNull();
+        assertThat(other.received).isEmpty();
+    }
+
+    @Test
+    void 시청자의_answer와_candidate는_송출자에게만_가고_보낸_사람은_서버가_정한다() {
+        OnAir onAir = 송출을_시작한다("시청자 응답");
+        RecordingPeer viewer = new RecordingPeer();
+        RecordingPeer other = new RecordingPeer();
+        String viewerId = 입장한다(onAir, viewer);
+        입장한다(onAir, other);
+        onAir.broadcaster().received.clear();
+        other.received.clear();
+
+        // 시청자가 from을 위조해도 서버가 부여한 시청자 번호로 덮어쓴다.
+        live.relay(viewer, new SignalMessage("answer", Map.of("sdp", "a", "from", "999", "to", "x")));
+        live.relay(viewer, new SignalMessage("candidate", Map.of("candidate", "c")));
+
+        assertThat(onAir.broadcaster().types()).containsExactly("answer", "candidate");
+        assertThat(onAir.broadcaster().received.getFirst().text("from")).isEqualTo(viewerId);
+        assertThat(onAir.broadcaster().received.getFirst().text("to")).isNull();
+        assertThat(onAir.broadcaster().last().text("from")).isEqualTo(viewerId);
+        assertThat(other.received).isEmpty();
+    }
+
+    @Test
+    void 없는_시청자를_가리키거나_알_수_없는_종류의_메시지는_무시한다() {
+        OnAir onAir = 송출을_시작한다("무시");
+        RecordingPeer viewer = new RecordingPeer();
+        입장한다(onAir, viewer);
+        viewer.received.clear();
+        onAir.broadcaster().received.clear();
+
+        live.relay(onAir.broadcaster(), new SignalMessage("offer", Map.of("to", "nobody")));
+        live.relay(onAir.broadcaster(), new SignalMessage("offer", Map.of()));
+        live.relay(viewer, SignalMessage.of("end"));
+        live.relay(viewer, SignalMessage.of("whatever"));
+
+        assertThat(viewer.received).isEmpty();
+        assertThat(onAir.broadcaster().received).isEmpty();
+        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ON_AIR);
+    }
+
+    @Test
+    void 시청자가_나가면_송출자에게_퇴장과_줄어든_시청자_수가_가고_다른_시청자는_그대로다() {
+        OnAir onAir = 송출을_시작한다("시청자 퇴장");
+        RecordingPeer leaving = new RecordingPeer();
+        RecordingPeer staying = new RecordingPeer();
+        String leavingId = 입장한다(onAir, leaving);
+        입장한다(onAir, staying);
+        onAir.broadcaster().received.clear();
+        staying.received.clear();
+
+        live.leave(leaving);
+
+        assertThat(onAir.broadcaster().types()).containsExactly("viewer-left", "viewer-count");
+        assertThat(onAir.broadcaster().received.getFirst().text("viewerId")).isEqualTo(leavingId);
+        assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 1);
+        assertThat(staying.received).isEmpty();
+        assertThat(staying.closed).isFalse();
+        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ON_AIR);
+    }
+
+    @Test
+    void 같은_연결이_두_번_입장해도_자리는_하나다() {
+        OnAir onAir = 송출을_시작한다("중복 입장");
+        RecordingPeer viewer = new RecordingPeer();
+        입장한다(onAir, viewer);
+
+        JoinResult again = live.joinAsViewer(onAir.started().broadcastId(), viewer);
+
+        assertThat(again.rejection()).isEqualTo(JoinResult.Rejection.ALREADY_JOINED);
+        assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 1);
+    }
+
+    @Test
+    void 송출자가_end를_보내면_모든_시청자에게_ended가_가고_연결이_닫힌다() {
+        OnAir onAir = 송출을_시작한다("송출 종료");
+        RecordingPeer first = new RecordingPeer();
+        RecordingPeer second = new RecordingPeer();
+        입장한다(onAir, first);
+        입장한다(onAir, second);
+
+        live.relay(onAir.broadcaster(), SignalMessage.of("end"));
+
+        assertThat(first.last().type()).isEqualTo("ended");
+        assertThat(second.last().type()).isEqualTo("ended");
+        assertThat(first.closed).isTrue();
+        assertThat(second.closed).isTrue();
+    }
+
+    @Test
+    void 송출자_연결이_끊겨도_모든_시청자에게_ended가_가고_이후_시청자_퇴장은_송출자에게_알리지_않는다() {
+        OnAir onAir = 송출을_시작한다("송출자 끊김");
+        RecordingPeer viewer = new RecordingPeer();
+        입장한다(onAir, viewer);
+        onAir.broadcaster().received.clear();
+
+        live.leave(onAir.broadcaster());
+        live.leave(viewer);
+
+        assertThat(viewer.last().type()).isEqualTo("ended");
+        assertThat(viewer.closed).isTrue();
+        assertThat(onAir.broadcaster().received).isEmpty();
     }
 }
