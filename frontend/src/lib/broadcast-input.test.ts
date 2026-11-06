@@ -92,13 +92,32 @@ describe('서버 오류 배치', () => {
         kind: 'invalid',
         fieldErrors: { title: '제목 오류', video: '영상 오류', thumbnail: '썸네일 오류', durationSeconds: '시간 오류' },
       }),
-    ).toEqual({ title: '제목 오류', video: '영상 오류', others: ['썸네일 오류', '시간 오류'], unknown: false })
+    ).toEqual({
+      title: '제목 오류',
+      video: '영상 오류',
+      thumbnail: '썸네일 오류',
+      others: ['시간 오류'],
+      unknown: false,
+    })
   })
 
   it('413은 영상 옆에 상한 안내를 보여 준다', () => {
     expect(input.placeFailure({ kind: 'tooLarge', maxBytes: 10, message: '너무 큽니다' })).toEqual({
       title: null,
       video: '너무 큽니다',
+      thumbnail: null,
+      others: [],
+      unknown: false,
+    })
+  })
+
+  it('영상이 없는 요청의 413은 썸네일 옆에 보여 준다', () => {
+    expect(
+      input.placeFailure({ kind: 'tooLarge', maxBytes: 10, message: '썸네일은 2MB 이하만 올릴 수 있습니다' }, 'thumbnail'),
+    ).toEqual({
+      title: null,
+      video: null,
+      thumbnail: '썸네일은 2MB 이하만 올릴 수 있습니다',
       others: [],
       unknown: false,
     })
