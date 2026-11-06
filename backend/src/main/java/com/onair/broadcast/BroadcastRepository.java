@@ -25,6 +25,9 @@ interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
     @Query("select l from LiveBroadcast l where l.id = :id")
     Optional<LiveBroadcast> findLiveById(@Param("id") long id);
 
+    @Query("select l from LiveBroadcast l where l.status = com.onair.broadcast.LiveStatus.ON_AIR")
+    List<LiveBroadcast> findOnAirLives();
+
     /** 영상 파일을 여는 요청용. 녹화방송이 아닌 id는 비어 있다. */
     @Query("select r from RecordingBroadcast r join fetch r.video where r.id = :id")
     Optional<RecordingBroadcast> findRecordingWithVideoById(@Param("id") long id);

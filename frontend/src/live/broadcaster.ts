@@ -44,6 +44,8 @@ export interface BroadcasterDeps {
   now(): number
   /** 송출 중 화면이 꺼지지 않게 잠근다. 지원하지 않으면 없다. */
   requestWakeLock?: () => Promise<WakeLockHandle>
+  /** 화면이 다시 보일 때마다 listener를 부른다. 돌려주는 함수로 구독을 푼다. 지원하지 않으면 없다. */
+  watchVisible?: (listener: () => void) => () => void
 }
 
 export interface LiveBroadcaster {
@@ -59,6 +61,7 @@ export interface LiveBroadcaster {
 }
 
 const END_CONFIRM_TIMEOUT_MS = 5000
+const HEARTBEAT_INTERVAL_MS = 10_000
 const START_FAILURE_MESSAGE = '송출을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'
 
 function classifyCameraError(error: unknown): CameraUnavailableReason {
@@ -78,6 +81,8 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   let generation = 0
   let channel: SignalingChannel | null = null
   let wakeLock: WakeLockHandle | null = null
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let stopWatchingVisible: (() => void) | null = null
   // 시청자 번호 -> 그 시청자와의 연결. queue는 협상 단계를 도착한 순서대로 하나씩 처리하게 한다.
   const viewers = new Map<string, { connection: PeerConnectionLike; queue: Promise<void> }>()
   let pendingJoin: { resolve(): void; reject(error: Error): void } | null = null
@@ -96,6 +101,41 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     const lock = wakeLock
     wakeLock = null
     if (lock) void lock.release().catch(() => undefined)
+  }
+
+  /** 화면 꺼짐 방지를 요청한다. 지원하지 않거나 거절되면 조용히 건너뛴다. */
+  function acquireWakeLock(session: number) {
+    if (!deps.requestWakeLock) return
+    void deps.requestWakeLock().then(
+      (lock) => {
+        if (session === generation && current.phase === 'onAir') {
+          // 이미 잡고 있던 잠금이 있으면 새 잠금으로 바꾼다.
+          const previous = wakeLock
+          wakeLock = lock
+          if (previous) void previous.release().catch(() => undefined)
+        } else {
+          void lock.release().catch(() => undefined)
+        }
+      },
+      () => undefined,
+    )
+  }
+
+  /** 송출 중에는 연락이 끊기지 않았음을 서버에 알리고, 화면이 다시 보이면 화면 꺼짐 방지를 다시 요청한다. */
+  function startKeepAlive(session: number) {
+    heartbeatTimer = setInterval(() => channel?.send({ type: 'heartbeat' }), HEARTBEAT_INTERVAL_MS)
+    // 브라우저는 화면이 가려지면 잠금을 스스로 풀기 때문에 다시 보일 때 새로 요청한다.
+    stopWatchingVisible =
+      deps.watchVisible?.(() => {
+        if (session === generation && current.phase === 'onAir') acquireWakeLock(session)
+      }) ?? null
+  }
+
+  function stopKeepAlive() {
+    if (heartbeatTimer !== null) clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+    stopWatchingVisible?.()
+    stopWatchingVisible = null
   }
 
   function closeViewer(viewerId: string) {
@@ -178,6 +218,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   function finish(broadcastId: number) {
     const stream = streamOf(current)
     if (stream) stopTracks(stream)
+    stopKeepAlive()
     releaseWakeLock()
     closeAllViewers()
     closeChannel()
@@ -281,15 +322,8 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         await joinAsBroadcaster(started.id, started.streamKey)
         if (session !== generation) return
         set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0 })
-        if (deps.requestWakeLock) {
-          void deps.requestWakeLock().then(
-            (lock) => {
-              if (session === generation && current.phase === 'onAir') wakeLock = lock
-              else void lock.release().catch(() => undefined)
-            },
-            () => undefined,
-          )
-        }
+        startKeepAlive(session)
+        acquireWakeLock(session)
       } catch (error) {
         closeChannel()
         if (session !== generation) return
@@ -316,6 +350,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       generation += 1
       const stream = streamOf(current)
       if (stream) stopTracks(stream)
+      stopKeepAlive()
       releaseWakeLock()
       closeAllViewers()
       closeChannel()

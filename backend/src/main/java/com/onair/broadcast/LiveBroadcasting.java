@@ -4,9 +4,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -28,17 +32,22 @@ public class LiveBroadcasting {
     private final MediaStorage storage;
     private final RegistrationRules rules;
     private final TransactionTemplate transaction;
-    private final Clock clock = Clock.systemUTC();
+    private final Clock clock;
 
     // 방송 id → 송출자 연결, 연결 → 방송 id. this 잠금으로 보호한다.
     private final Map<Long, Peer> broadcasters = new HashMap<>();
     private final Map<Peer, Long> broadcastIds = new IdentityHashMap<>();
+    // 방송 id -> 송출자의 마지막 생존 신호 시각. 연결된 송출자만 있다. 연결 전 방송은 시작 시각(DB)을 쓴다.
+    private final Map<Long, Instant> lastSignals = new HashMap<>();
     // 방송 id -> (시청자 번호 -> 시청자 연결), 연결 -> 자리. 시청자 번호는 서버가 부여한다.
     private final Map<Long, Map<String, Peer>> viewers = new HashMap<>();
     private final Map<Peer, ViewerSeat> seats = new IdentityHashMap<>();
     private long lastViewerNumber;
 
     private record ViewerSeat(long broadcastId, String viewerId) { }
+
+    /** 마지막 생존 신호에서 이 시간이 지나도록 연락이 없으면 송출자가 사라진 것으로 본다. */
+    static final Duration SILENCE_LIMIT = Duration.ofSeconds(30);
 
     private static final Set<String> RELAYED_TYPES =
             Set.of(SignalMessage.OFFER, SignalMessage.ANSWER, SignalMessage.CANDIDATE);
@@ -47,7 +56,9 @@ public class LiveBroadcasting {
             BroadcastRepository repository,
             MediaStorage storage,
             RegistrationRules rules,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            Clock clock) {
+        this.clock = clock;
         this.repository = repository;
         this.storage = storage;
         this.rules = rules;
@@ -79,6 +90,7 @@ public class LiveBroadcasting {
         }
         broadcasters.put(broadcastId, peer);
         broadcastIds.put(peer, broadcastId);
+        lastSignals.put(broadcastId, clock.instant());
         peer.send(SignalMessage.of(SignalMessage.JOINED, "broadcastId", broadcastId));
         return result;
     }
@@ -147,8 +159,48 @@ public class LiveBroadcasting {
         }
     }
 
+    /**
+     * 마지막 생존 신호에서 30초가 지난 방송을 종료한다. 송출자가 연결된 방송은 마지막 heartbeat 시각을,
+     * 연결되지 않은 방송은 시작 시각을 첫 생존 신호로 본다. 서버가 다시 시작돼 연결 표가 비어도
+     * 방송 중으로 남은 방송은 DB에서 찾으므로 같은 규칙으로 정리된다.
+     * 종료되는 방송의 송출자와 시청자에게는 ended를 보내고 연결을 닫는다.
+     */
+    public synchronized void expireSilentBroadcasters(Instant now) {
+        List<LiveBroadcast> onAir = transaction.execute(status -> repository.findOnAirLives());
+        if (onAir == null) {
+            return;
+        }
+        List<Long> silent = new ArrayList<>();
+        for (LiveBroadcast live : onAir) {
+            Instant lastSignal = lastSignals.getOrDefault(live.getId(), live.getCreatedAt());
+            if (now.isAfter(lastSignal.plus(SILENCE_LIMIT))) {
+                silent.add(live.getId());
+            }
+        }
+        for (long broadcastId : silent) {
+            Peer broadcaster = broadcasters.get(broadcastId);
+            finish(broadcastId);
+            if (broadcaster != null) {
+                broadcaster.send(SignalMessage.of(SignalMessage.ENDED));
+                broadcaster.close();
+            }
+        }
+    }
+
+    /**
+     * 방송 중으로 남은 라이브방송을 모두 종료한다. 서버가 켜질 때 부른다.
+     * 서버가 꺼지면 송출 연결도 끊기므로, 켜진 시점에 방송 중인 방송은 모두 버려진 것이다.
+     */
+    public synchronized void endAllOnAir() {
+        Instant now = clock.instant();
+        transaction.executeWithoutResult(status ->
+                repository.findOnAirLives().forEach(live -> live.end(now)));
+    }
+
     private void relayFromBroadcaster(long broadcastId, Peer from, SignalMessage message) {
-        if (SignalMessage.END.equals(message.type())) {
+        if (SignalMessage.HEARTBEAT.equals(message.type())) {
+            lastSignals.put(broadcastId, clock.instant());
+        } else if (SignalMessage.END.equals(message.type())) {
             finish(broadcastId);
             from.send(SignalMessage.of(SignalMessage.ENDED));
             from.close();
@@ -226,6 +278,7 @@ public class LiveBroadcasting {
     private void finish(long broadcastId) {
         transaction.executeWithoutResult(status ->
                 repository.findLiveById(broadcastId).ifPresent(live -> live.end(clock.instant())));
+        lastSignals.remove(broadcastId);
         Peer peer = broadcasters.remove(broadcastId);
         if (peer != null) {
             broadcastIds.remove(peer);

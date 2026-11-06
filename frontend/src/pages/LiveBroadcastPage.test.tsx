@@ -247,6 +247,17 @@ it('송출 중에 다른 화면으로 가려 하면 확인을 받고, 계속 방
   expect(screen.getByText('LIVE')).toBeInTheDocument()
 })
 
+it('송출 중에 탭을 닫거나 새로고침하려 하면 브라우저 확인을 띄우고, 송출 전에는 띄우지 않는다', async () => {
+  const user = userEvent.setup()
+  renderApp('/broadcasts/live/new')
+  await screen.findByLabelText('제목')
+  expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(true)
+
+  await startOnAir(user)
+
+  expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(false)
+})
+
 it('송출 중에는 현재 시청자 수를 보여 주고, 시청자가 드나들어도 다른 시청자의 연결은 유지한다', async () => {
   const user = userEvent.setup()
   renderApp('/broadcasts/live/new')
