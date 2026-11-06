@@ -59,9 +59,18 @@ public class LiveChat {
 
     /** 방의 구독자 전원에게 채팅을 보낸다. comment는 화면으로 나가는 댓글 모양 그대로다. */
     public void publish(long broadcastId, Object comment) {
+        broadcast(broadcastId, ChatMessage.comment(comment));
+    }
+
+    /** 방의 구독자 전원에게 확정된 후원을 보낸다. donation은 화면으로 나가는 후원 모양 그대로다. */
+    public void publishDonation(long broadcastId, Object donation) {
+        broadcast(broadcastId, ChatMessage.donation(donation));
+    }
+
+    private void broadcast(long broadcastId, ChatMessage message) {
         // 연결마다 전송이 직렬화되어 있으므로(WebSocketPeer) 여기서는 잠그지 않는다.
         for (ChatSubscriber subscriber : subscribers.getOrDefault(broadcastId, Set.of())) {
-            subscriber.send(ChatMessage.comment(comment));
+            subscriber.send(message);
         }
     }
 

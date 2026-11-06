@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Comment, CommentPage } from '../api/comments'
 import type { ChatChannel, ChatDeps, ChatHandlers } from './chat'
 import { RECONNECT_DELAY_MS, createLiveChat } from './chat'
-import type { ChatMessage } from './chat-protocol'
+import type { ChatDonation, ChatMessage } from './chat-protocol'
 
 function comment(id: number, content = `채팅 ${id}`): Comment {
   return { id, content, author: { id: 1, nickname: '방송러' }, createdAt: '2026-03-15T12:00:00Z' }
@@ -83,6 +83,20 @@ async function opened(initial: Comment[] = [], options: { pageSize?: number } = 
 const commentsOf = (state: ReturnType<ReturnType<typeof createLiveChat>['state']>) =>
   state.phase === 'open' || state.phase === 'ended' ? state.comments.map((c) => c.id) : null
 
+function donation(id: number, amount = 5000): ChatDonation {
+  return {
+    id,
+    amount,
+    message: '힘내세요',
+    donor: { id: 3, nickname: '후원자' },
+    confirmedAt: '2026-03-15T12:30:00Z',
+    total: { amount, count: id },
+  }
+}
+
+const donationsOf = (state: ReturnType<ReturnType<typeof createLiveChat>['state']>) =>
+  state.phase === 'open' || state.phase === 'ended' ? state.donations.map((d) => d.id) : null
+
 describe('채팅 모듈', () => {
   it('join하면 connecting이고 방송 번호로 연결과 최근 채팅을 요청한다', async () => {
     const env = setup([comment(1)])
@@ -147,6 +161,38 @@ describe('채팅 모듈', () => {
     expect(env.postComment).toHaveBeenCalledWith(7, '안녕')
   })
 
+  it('후원 메시지를 받으면 id 순으로 쌓고 같은 id는 하나만 둔다', async () => {
+    const { chat, env } = await opened([comment(1)])
+    expect(donationsOf(chat.state())).toEqual([])
+
+    env.server.push({ type: 'donation', donation: donation(2) })
+    env.server.push({ type: 'donation', donation: donation(1) })
+    env.server.push({ type: 'donation', donation: donation(2) })
+
+    expect(donationsOf(chat.state())).toEqual([1, 2])
+    expect(commentsOf(chat.state())).toEqual([1])
+  })
+
+  it('목록을 불러오는 동안 받은 후원도 빠지지 않는다', async () => {
+    const env = setup([comment(1)])
+    let release: () => void = () => {}
+    env.deps.fetchPage = vi.fn(
+      () =>
+        new Promise<CommentPage>((resolve) => {
+          release = () => resolve({ items: [comment(1)], nextCursor: null, totalCount: 1 })
+        }),
+    )
+    const chat = createLiveChat(env.deps, 7)
+
+    chat.join()
+    await vi.waitFor(() => expect(env.sockets).toHaveLength(1))
+    env.server.push({ type: 'donation', donation: donation(4) })
+    release()
+    await vi.waitFor(() => expect(chat.state().phase).toBe('open'))
+
+    expect(donationsOf(chat.state())).toEqual([4])
+  })
+
   it('ended를 받으면 읽기 전용이 되고 채팅 목록을 그대로 둔다', async () => {
     const { chat, env } = await opened([comment(1)])
 
@@ -154,7 +200,7 @@ describe('채팅 모듈', () => {
     env.server.push({ type: 'comment', comment: comment(9) })
     env.server.drop()
 
-    expect(chat.state()).toEqual({ phase: 'ended', comments: [comment(1)] })
+    expect(chat.state()).toEqual({ phase: 'ended', comments: [comment(1)], donations: [] })
     expect(env.timers).toHaveLength(0)
   })
 

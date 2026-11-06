@@ -1,9 +1,12 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { MAX_COMMENT_LENGTH, decodeCommentFailure } from '../api/comments'
+import { MAX_COMMENT_LENGTH, decodeCommentFailure, type Comment } from '../api/comments'
+import { applyDonationEvent, donationKeys } from '../api/donations'
 import { useAuth } from '../auth/auth-context'
 import { cn } from '@/lib/utils'
 import type { ChatState } from '../live/chat'
+import type { ChatDonation } from '../live/chat-protocol'
 import { useLiveChat } from '../live/useLiveChat'
 import { Button } from './ui/button'
 
@@ -16,6 +19,7 @@ const STICK_THRESHOLD = 40
  */
 export function ChatPanel({ broadcastId, className }: { broadcastId: number; className?: string }) {
   const { state, send, retry } = useLiveChat(broadcastId)
+  useDonationEvents(broadcastId, state)
 
   return (
     <section
@@ -31,16 +35,54 @@ export function ChatPanel({ broadcastId, className }: { broadcastId: number; cla
   )
 }
 
+/**
+ * 채팅으로 온 후원을 후원 영역의 조회 캐시에 반영한다. 반영한 id는 기억해 같은 후원을 두 번 합치지 않는다.
+ * 다른 방송으로 바뀌거나 채팅을 다시 시작해 후원 목록이 비면 처음부터 다시 센다.
+ */
+function useDonationEvents(broadcastId: number, state: ChatState) {
+  const queryClient = useQueryClient()
+  const applied = useRef(new Set<number>())
+  const donations = state.phase === 'open' || state.phase === 'ended' ? state.donations : null
+
+  useEffect(() => {
+    applied.current = new Set()
+  }, [broadcastId])
+
+  useEffect(() => {
+    if (!donations) return
+    for (const donation of donations) {
+      if (applied.current.has(donation.id)) continue
+      applied.current.add(donation.id)
+      queryClient.setQueryData<ReturnType<typeof applyDonationEvent>>(donationKeys.list(broadcastId), (data) =>
+        applyDonationEvent(data, donation),
+      )
+    }
+  }, [broadcastId, donations, queryClient])
+}
+
+type ChatItem = { key: string; at: number; comment: Comment; donation?: undefined } | { key: string; at: number; donation: ChatDonation; comment?: undefined }
+
+/** 채팅과 후원을 시간 순(같은 시각이면 채팅이 먼저)으로 한 줄씩 늘어놓는다. */
+function timeline(comments: Comment[], donations: ChatDonation[]): ChatItem[] {
+  const items: ChatItem[] = [
+    ...comments.map((comment) => ({ key: `c${comment.id}`, at: Date.parse(comment.createdAt), comment })),
+    ...donations.map((donation) => ({ key: `d${donation.id}`, at: Date.parse(donation.confirmedAt), donation })),
+  ]
+  return items.sort((a, b) => a.at - b.at || (a.donation ? 1 : 0) - (b.donation ? 1 : 0))
+}
+
 function ChatList({ state, onRetry }: { state: ChatState; onRetry: () => void }) {
   const listRef = useRef<HTMLDivElement>(null)
   // 맨 아래에 있을 때만 새 채팅을 따라 내려간다. 위로 올려 읽는 동안에는 위치를 그대로 둔다.
   const stickRef = useRef(true)
   const comments = state.phase === 'open' || state.phase === 'ended' ? state.comments : null
+  const donations = state.phase === 'open' || state.phase === 'ended' ? state.donations : null
+  const items = useMemo(() => (comments && donations ? timeline(comments, donations) : null), [comments, donations])
 
   useLayoutEffect(() => {
     const list = listRef.current
     if (list && stickRef.current) list.scrollTop = list.scrollHeight
-  }, [comments])
+  }, [items])
 
   function handleScroll() {
     const list = listRef.current
@@ -58,15 +100,27 @@ function ChatList({ state, onRetry }: { state: ChatState; onRetry: () => void })
           </Button>
         </div>
       )}
-      {comments && comments.length === 0 && <p className="text-sub">아직 채팅이 없습니다</p>}
-      {comments && comments.length > 0 && (
+      {items && items.length === 0 && <p className="text-sub">아직 채팅이 없습니다</p>}
+      {items && items.length > 0 && (
         <ul aria-label="채팅 목록" className="flex flex-col gap-1.5 text-sm">
-          {comments.map((comment) => (
-            <li key={comment.id} className="break-words whitespace-pre-wrap">
-              <span className="mr-2 font-semibold text-foreground">{comment.author.nickname}</span>
-              <span className="text-foreground">{comment.content}</span>
-            </li>
-          ))}
+          {items.map((item) =>
+            item.donation ? (
+              <li
+                key={item.key}
+                data-donation=""
+                className="break-words whitespace-pre-wrap rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-2"
+              >
+                <span className="mr-2 font-semibold text-foreground">{item.donation.donor.nickname}</span>
+                <span className="font-bold text-primary">{item.donation.amount.toLocaleString('ko-KR')}원 후원</span>
+                {item.donation.message && <p className="mt-0.5 text-foreground">{item.donation.message}</p>}
+              </li>
+            ) : (
+              <li key={item.key} className="break-words whitespace-pre-wrap">
+                <span className="mr-2 font-semibold text-foreground">{item.comment.author.nickname}</span>
+                <span className="text-foreground">{item.comment.content}</span>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </div>

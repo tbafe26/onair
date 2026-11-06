@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, it } from 'vitest'
@@ -149,4 +149,35 @@ it('녹화방송에는 후원 영역이 없다', async () => {
   expect(await screen.findByRole('heading', { name: /댓글/ })).toBeInTheDocument()
   expect(screen.queryByRole('region', { name: '후원' })).not.toBeInTheDocument()
   expect(asked).toBe(false)
+})
+
+it('방송 중 채팅으로 온 후원은 합계를 바꾸고 내역 맨 위에 한 번만 붙는다', async () => {
+  stubBroadcast()
+  server.use(
+    http.get('/api/broadcasts/5/donations', () =>
+      HttpResponse.json({ total: { amount: 6_000, count: 2 }, items: [second, third], nextCursor: null }),
+    ),
+  )
+  const app = renderApp('/broadcasts/5')
+  const area = await screen.findByRole('region', { name: '후원' })
+  expect(await within(area).findByText('6,000원')).toBeInTheDocument()
+
+  const event = { ...first, total: { amount: 16_000, count: 3 } }
+  act(() => app.fake.chat.setState({ phase: 'open', comments: [], donations: [event] }))
+
+  expect(await within(area).findByText('16,000원')).toBeInTheDocument()
+  expect(within(area).getByText('3건')).toBeInTheDocument()
+  let items = within(within(area).getByRole('list', { name: '후원 내역' })).getAllByRole('listitem')
+  expect(items.map((item) => item.textContent)).toEqual([
+    expect.stringContaining('후원자A'),
+    expect.stringContaining('후원자B'),
+    expect.stringContaining('후원자A'),
+  ])
+  expect(items[0]).toHaveTextContent('10,000원')
+
+  // 같은 후원이 다시 상태에 실려 와도 늘어나지 않는다.
+  act(() => app.fake.chat.setState({ phase: 'open', comments: [], donations: [event, { ...event }] }))
+  items = within(within(area).getByRole('list', { name: '후원 내역' })).getAllByRole('listitem')
+  expect(items).toHaveLength(3)
+  expect(within(area).getByText('3건')).toBeInTheDocument()
 })

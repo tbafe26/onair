@@ -1,14 +1,17 @@
 // 채팅 모듈. React와 무관하고, WebSocket 열기와 REST 호출은 바깥에서 받는다(deps).
 // 서버는 놓친 메시지를 보관하지 않으므로, 다시 연결하면 REST로 놓친 채팅을 채운 뒤 구독을 잇는다.
 import type { Comment, CommentPage } from '../api/comments'
-import type { ChatMessage } from './chat-protocol'
+import type { ChatDonation, ChatMessage } from './chat-protocol'
 
 export type ChatState =
   | { phase: 'connecting' }
-  /** comments는 오래된 순이다. 연결이 끊겨 다시 연결하는 동안에도 open으로 남는다. */
-  | { phase: 'open'; comments: Comment[] }
+  /**
+   * comments는 오래된 순이다. 연결이 끊겨 다시 연결하는 동안에도 open으로 남는다.
+   * donations는 이 화면이 열려 있는 동안 채팅으로 받은 확정 후원이고 id 순(오래된 순)이다.
+   */
+  | { phase: 'open'; comments: Comment[]; donations: ChatDonation[] }
   /** 방송이 끝났다. 쓸 수 없고 읽기만 한다. */
-  | { phase: 'ended'; comments: Comment[] }
+  | { phase: 'ended'; comments: Comment[]; donations: ChatDonation[] }
   | { phase: 'failed'; message: string }
 
 export interface ChatChannel {
@@ -44,9 +47,9 @@ function defaultSchedule(callback: () => void, delayMs: number) {
 }
 
 /** 같은 id는 먼저 있던 것을 남기고, id 순(오래된 순)으로 정렬해 최근 것만 둔다. */
-function merge(existing: Comment[], incoming: Comment[]): Comment[] {
+function merge<T extends { id: number }>(existing: T[], incoming: T[]): T[] {
   const known = new Set(existing.map((comment) => comment.id))
-  const added = incoming.filter((comment) => !known.has(comment.id) && known.add(comment.id))
+  const added = incoming.filter((item) => !known.has(item.id) && known.add(item.id))
   if (added.length === 0) return existing
   return [...existing, ...added].sort((a, b) => a.id - b.id).slice(-MAX_KEPT_COMMENTS)
 }
@@ -67,12 +70,14 @@ interface Connection {
   loaded: boolean
   /** 목록을 채우는 동안 구독으로 먼저 도착한 채팅. */
   buffered: Comment[]
+  bufferedDonations: ChatDonation[]
   endedEarly: boolean
 }
 
 export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
   let current: ChatState = { phase: 'connecting' }
   let comments: Comment[] = []
+  let donations: ChatDonation[] = []
   let everLoaded = false
   // join, dispose, 연결 끊김마다 올린다. 늦게 도착한 콜백이 이미 정리된 연결을 건드리지 않게 거른다.
   let generation = 0
@@ -127,13 +132,25 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
   }
 
   async function connect(session: number) {
-    const connection: Connection = { loaded: false, buffered: [], endedEarly: false }
+    const connection: Connection = { loaded: false, buffered: [], bufferedDonations: [], endedEarly: false }
 
     function handleMessage(message: ChatMessage) {
       if (session !== generation || current.phase === 'ended') return
       if (message.type === 'ended') {
-        if (connection.loaded) set({ phase: 'ended', comments })
+        if (connection.loaded) set({ phase: 'ended', comments, donations })
         else connection.endedEarly = true
+        return
+      }
+      if (message.type === 'donation') {
+        if (!connection.loaded) {
+          connection.bufferedDonations.push(message.donation)
+          return
+        }
+        const nextDonations = merge(donations, [message.donation])
+        if (nextDonations !== donations) {
+          donations = nextDonations
+          set({ phase: 'open', comments, donations })
+        }
         return
       }
       if (!connection.loaded) {
@@ -143,7 +160,7 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
       const next = merge(comments, [message.comment])
       if (next !== comments) {
         comments = next
-        set({ phase: 'open', comments })
+        set({ phase: 'open', comments, donations })
       }
     }
 
@@ -173,9 +190,10 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
       const missed = await loadMissed()
       if (session !== generation) return
       comments = merge(merge(comments, missed), connection.buffered)
+      donations = merge(donations, connection.bufferedDonations)
       everLoaded = true
       connection.loaded = true
-      set(connection.endedEarly ? { phase: 'ended', comments } : { phase: 'open', comments })
+      set(connection.endedEarly ? { phase: 'ended', comments, donations } : { phase: 'open', comments, donations })
     } catch {
       connectionFailed(session)
     }
@@ -195,6 +213,7 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
       generation += 1
       teardown()
       comments = []
+      donations = []
       everLoaded = false
       set({ phase: 'connecting' })
       void connect(generation)
@@ -206,7 +225,7 @@ export function createLiveChat(deps: ChatDeps, broadcastId: number): LiveChat {
       const next = merge(comments, [created])
       if (next !== comments) {
         comments = next
-        set({ phase: 'open', comments })
+        set({ phase: 'open', comments, donations })
       }
     },
 

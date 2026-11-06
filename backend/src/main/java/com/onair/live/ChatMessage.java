@@ -9,6 +9,7 @@ import java.util.Map;
 public record ChatMessage(String type, Map<String, Object> fields) {
 
     static final String COMMENT = "comment";
+    static final String DONATION = "donation";
     static final String ENDED = "ended";
 
     public ChatMessage {
@@ -17,6 +18,10 @@ public record ChatMessage(String type, Map<String, Object> fields) {
 
     public static ChatMessage comment(Object comment) {
         return new ChatMessage(COMMENT, Map.of("comment", comment));
+    }
+
+    public static ChatMessage donation(Object donation) {
+        return new ChatMessage(DONATION, Map.of("donation", donation));
     }
 
     public static ChatMessage ended() {
