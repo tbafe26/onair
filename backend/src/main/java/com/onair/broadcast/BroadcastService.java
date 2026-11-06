@@ -25,11 +25,13 @@ class BroadcastService {
     private final RegistrationRules rules;
     private final AppUserRepository users;
     private final Comments comments;
-    private final Clock clock = Clock.systemUTC();
+    private final Clock clock;
     private final TransactionTemplate transaction;
 
     BroadcastService(BroadcastRepository repository, MediaStorage storage, RegistrationRules rules,
-            AppUserRepository users, Comments comments, PlatformTransactionManager transactionManager) {
+            AppUserRepository users, Comments comments, PlatformTransactionManager transactionManager,
+            Clock clock) {
+        this.clock = clock;
         this.comments = comments;
         this.transaction = new TransactionTemplate(transactionManager);
         this.users = users;
