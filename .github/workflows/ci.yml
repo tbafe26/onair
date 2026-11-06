@@ -138,7 +138,7 @@ jobs:
       - name: gitleaks 실행
         # 라이선스 키가 필요 없는 공식 CLI를 직접 내려받아 쓴다.
         env:
-          GITLEAKS_VERSION: "8.28.0"
+          GITLEAKS_VERSION: "8.30.1"
         run: |
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
           ./gitleaks git --redact --verbose
