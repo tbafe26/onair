@@ -59,7 +59,7 @@ class MultipartLimitApiTest {
 
     /** 가입해서 로그인한 사용자의 Cookie 헤더 값. DB를 비우지 않는 테스트라 아이디는 매번 새로 만든다. */
     String 로그인한_쿠키() {
-        return RealPortLogin.signUp(port, "u" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12), "방장");
+        return RealPortLogin.signUp(port, "u" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12), "소유자닉");
     }
 
     ResponseEntity<String> 등록한다(byte[] video, byte[] thumbnail) {

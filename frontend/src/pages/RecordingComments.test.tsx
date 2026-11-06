@@ -30,7 +30,7 @@ function fakeServer(initial: FakeComment[]) {
         kind: 'RECORDING',
         title: '상세 방송',
         createdAt: '2026-03-15T12:00:00Z',
-        owner: { id: 9, nickname: '주인' },
+        owner: { id: 9, nickname: '소유자닉' },
         video: {
           url: '/api/broadcasts/7/video',
           contentType: 'video/webm',
