@@ -13,6 +13,7 @@ public record SignalMessage(String type, Map<String, Object> fields) {
     public static final String JOINED = "joined";
     public static final String REJECTED = "rejected";
     public static final String END = "end";
+    public static final String HEARTBEAT = "heartbeat";
     public static final String ENDED = "ended";
     public static final String OFFER = "offer";
     public static final String ANSWER = "answer";

@@ -3,11 +3,14 @@ package com.onair.broadcast;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -19,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(TestClockConfig.class)
 abstract class ApiTestSupport {
 
     @Autowired
@@ -27,11 +31,16 @@ abstract class ApiTestSupport {
     @Autowired
     protected BroadcastRepository repository;
 
+    @Autowired
+    protected MutableClock clock;
+
     @Value("${app.storage.dir}")
     protected Path storageDir;
 
     @BeforeEach
     void 방송과_저장_폴더를_비운다() throws IOException {
+        // DB 시각 정밀도보다 거칠게 맞춰, 저장하기 전과 읽은 뒤의 시각이 같게 한다.
+        clock.set(Instant.now().truncatedTo(ChronoUnit.MILLIS));
         repository.deleteAll();
         Files.createDirectories(storageDir);
         try (var files = Files.list(storageDir)) {
