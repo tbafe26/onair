@@ -28,7 +28,7 @@ class LiveBroadcastController {
             @RequestParam(required = false) String title,
             @RequestParam(required = false) MultipartFile thumbnail,
             @AuthenticationPrincipal AuthenticatedUser user) {
-        StartedLive started = live.start(new StartLiveCommand(title, thumbnail), user == null ? null : user.id());
+        StartedLive started = live.start(new StartLiveCommand(title, thumbnail), AuthenticatedUser.idOf(user));
         return ResponseEntity
                 .created(URI.create(BroadcastResponses.location(started.broadcastId())))
                 .body(new StartedLiveResponse(started.broadcastId(), started.streamKey()));

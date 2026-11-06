@@ -23,6 +23,6 @@ class MyBroadcastsController {
             @RequestParam(required = false) Long before,
             @RequestParam(required = false) Integer size,
             @AuthenticationPrincipal AuthenticatedUser user) {
-        return service.listMine(user == null ? null : user.id(), before, size);
+        return service.listMine(AuthenticatedUser.idOf(user), before, size);
     }
 }

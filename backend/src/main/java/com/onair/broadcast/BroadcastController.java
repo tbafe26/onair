@@ -43,7 +43,7 @@ class BroadcastController {
             @RequestParam(required = false) String durationSeconds,
             @AuthenticationPrincipal AuthenticatedUser user) {
         Broadcast created = service.register(
-                new RegistrationForm(title, video, thumbnail, durationSeconds), user == null ? null : user.id());
+                new RegistrationForm(title, video, thumbnail, durationSeconds), AuthenticatedUser.idOf(user));
         return ResponseEntity
                 .created(URI.create(BroadcastResponses.location(created.getId())))
                 .body(BroadcastResponses.detail(created));
@@ -75,20 +75,20 @@ class BroadcastController {
             @PathVariable long id,
             @RequestBody TitleRequest request,
             @AuthenticationPrincipal AuthenticatedUser user) {
-        return service.rename(id, user == null ? null : user.id(), request.title());
+        return service.rename(id, AuthenticatedUser.idOf(user), request.title());
     }
 
     /** 소유자만 지울 수 있다. 방송 중인 라이브방송은 409다. */
     @DeleteMapping("/{id}")
     ResponseEntity<Void> delete(@PathVariable long id, @AuthenticationPrincipal AuthenticatedUser user) {
-        service.delete(id, user == null ? null : user.id());
+        service.delete(id, AuthenticatedUser.idOf(user));
         return ResponseEntity.noContent().build();
     }
 
     /** 소유자가 방송 중인 라이브방송을 종료한다. 이미 종료됐어도 204이고, 녹화방송은 409다. */
     @PostMapping("/{id}/end")
     ResponseEntity<Void> end(@PathVariable long id, @AuthenticationPrincipal AuthenticatedUser user) {
-        live.endByOwner(id, user == null ? null : user.id());
+        live.endByOwner(id, AuthenticatedUser.idOf(user));
         return ResponseEntity.noContent().build();
     }
 
