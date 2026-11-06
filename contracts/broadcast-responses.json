@@ -1,0 +1,27 @@
+{
+  "$comment": "방송 응답 계약. 백엔드 BroadcastSummary·BroadcastDetail 레코드와 프런트 api/broadcasts.ts 타입이 각자 테스트로 이 파일과 대조한다. required는 항상 값이 있는 필드, nullable은 JSON에 항상 키가 있고 값이 null일 수 있는 필드다(서버는 null도 직렬화한다). 필드를 바꾸면 이 파일과 양쪽을 함께 고친다.",
+  "RECORDING": {
+    "summary": {
+      "required": ["id", "kind", "title", "createdAt"],
+      "nullable": ["durationSeconds", "thumbnailUrl"]
+    },
+    "detail": {
+      "required": ["id", "kind", "title", "createdAt", "video"],
+      "nullable": [],
+      "video": {
+        "required": ["url", "contentType", "sizeBytes"],
+        "nullable": ["durationSeconds", "thumbnailUrl"]
+      }
+    }
+  },
+  "LIVE": {
+    "summary": {
+      "required": ["id", "kind", "title", "createdAt", "status"],
+      "nullable": ["thumbnailUrl"]
+    },
+    "detail": {
+      "required": ["id", "kind", "title", "createdAt", "status"],
+      "nullable": ["thumbnailUrl", "endedAt"]
+    }
+  }
+}
