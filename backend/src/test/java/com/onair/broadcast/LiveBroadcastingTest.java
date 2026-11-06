@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /** 송출 모듈을 interface(start, joinAsBroadcaster, relay, leave)로만 검증한다. 상대는 기록용 Peer다. */
@@ -17,9 +16,6 @@ class LiveBroadcastingTest extends ApiTestSupport {
 
     @Autowired
     LiveBroadcasting live;
-
-    @Autowired
-    JdbcTemplate jdbc;
 
     @Autowired
     MediaStorage storage;
