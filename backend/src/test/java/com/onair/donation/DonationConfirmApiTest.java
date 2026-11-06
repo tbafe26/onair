@@ -98,6 +98,25 @@ class DonationConfirmApiTest extends DonationApiTestSupport {
     }
 
     @Test
+    void 결제가_확인된_주문은_그사이_취소_기록이_먼저_들어와도_확정한다() throws Exception {
+        int id = 라이브방송을_시작한다();
+        AuthClient viewer = 시청자();
+        String orderId = 주문을_만든다(viewer.credentials(), id, 5000, "응원");
+        payments.onConfirm(call -> {
+            jdbc.update("update donation set status = 'CANCELED', failure_code = 'PAY_PROCESS_CANCELED'"
+                    + " where order_id = ?", orderId);
+            return new PaymentResult.Paid("DONE", call.orderId(), call.amount(), call.paymentKey());
+        });
+
+        승인한다(viewer.credentials(), "pk_1", orderId, 5000).andExpect(status().isOk());
+
+        Map<String, Object> row = 후원_행(orderId);
+        assertThat(row.get("STATUS")).isEqualTo("CONFIRMED");
+        assertThat(row.get("PAYMENT_KEY")).isEqualTo("pk_1");
+        assertThat(row.get("FAILURE_CODE")).isNull();
+    }
+
+    @Test
     void 비로그인은_401이고_본문이_깨져도_먼저_401이다() throws Exception {
         승인한다(Csrf.token(), "pk_1", "order", 5000).andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/donations/confirm").with(Csrf.token())

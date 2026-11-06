@@ -138,6 +138,22 @@ class PaymentNotificationApiTest extends DonationApiTestSupport {
     }
 
     @Test
+    void 취소_또는_실패로_기록된_주문도_조회_결과가_결제_완료면_확정한다() throws Exception {
+        int id = 라이브방송을_시작한다();
+        AuthClient viewer = 시청자();
+        for (String status : List.of("CANCELED", "FAILED")) {
+            String orderId = 주문을_만든다(viewer.credentials(), id, 5000, "응원");
+            jdbc.update("update donation set status = ?, failure_code = 'X' where order_id = ?", status, orderId);
+            payments.onFind(key -> new PaymentResult.Paid("DONE", orderId, 5000, key));
+
+            통지한다("pk_" + status, orderId).andExpect(status().isOk());
+
+            assertThat(후원_행(orderId).get("STATUS")).isEqualTo("CONFIRMED");
+            assertThat(후원_행(orderId).get("FAILURE_CODE")).isNull();
+        }
+    }
+
+    @Test
     void 승인_요청과_통지가_섞여_와도_한_건만_확정된다() throws Exception {
         int id = 라이브방송을_시작한다();
         AuthClient viewer = 시청자();

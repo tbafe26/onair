@@ -80,7 +80,7 @@ public class Donations implements BroadcastDeletionListener {
     /**
      * 결제를 승인하고 후원을 확정한다. 본인 주문(401, 404, 403)이고, 이미 같은 결제로 확정됐으면 그 결과를 그대로 돌려준다.
      * 실패·취소는 409, 금액 불일치는 결제 서비스를 부르지 않고 실패로 기록해 400, 거절과 응답 불일치는 실패로 기록해 402다.
-     * 결제 서비스를 부르는 동안 트랜잭션을 잡지 않고, 확정은 "대기일 때만 바꾸는" 조건부 갱신으로 한 번만 성공한다.
+     * 결제 서비스를 부르는 동안 트랜잭션을 잡지 않고, 확정은 "아직 확정되지 않았을 때만 바꾸는" 조건부 갱신으로 한 번만 성공한다.
      * 방송이 이미 끝났어도 확정한다.
      */
     public DonationView confirm(Long userId, String paymentKey, String orderId, long amount) {
@@ -126,11 +126,11 @@ public class Donations implements BroadcastDeletionListener {
 
     /**
      * 결제 서비스의 승인 통지를 처리한다. 통지 본문은 믿지 않고 결제 키로 결제를 다시 조회해, 승인과 같은 대조와
-     * 조건부 갱신으로 확정한다. 모르는 주문, 이미 끝난 주문, 조회 실패, 대조 실패는 아무것도 바꾸지 않고 돌아온다.
+     * 조건부 갱신으로 확정한다. 실패·취소로 기록된 주문도 결제 완료가 확인되면 확정한다. 모르는 주문, 이미 확정된 주문, 조회 실패, 대조 실패는 아무것도 바꾸지 않고 돌아온다.
      */
     public void handlePaymentNotification(String paymentKey, String orderId) {
         Donation donation = donations.findByOrderId(orderId).orElse(null);
-        if (donation == null || donation.getStatus() != DonationStatus.PENDING) {
+        if (donation == null || donation.getStatus() == DonationStatus.CONFIRMED) {
             return;
         }
         try {
@@ -142,11 +142,11 @@ public class Donations implements BroadcastDeletionListener {
         }
     }
 
-    // 대기 후원을 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
+    // 후원을 확정한다. 결제가 확인된 뒤라 대기가 아니어도 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
     private void markConfirmed(Donation donation, String paymentKey) {
         boolean won;
         try {
-            won = donations.confirmIfPending(donation.getId(), paymentKey, Instant.now(clock)) == 1;
+            won = donations.confirmUnlessConfirmed(donation.getId(), paymentKey, Instant.now(clock)) == 1;
         } catch (DataIntegrityViolationException e) {
             // 같은 결제 키가 다른 후원에 이미 쓰였다.
             throw new DonationNotPayableException();
