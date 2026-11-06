@@ -3,19 +3,17 @@ import { Loader2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { fetchMyBroadcasts, type BroadcastSummary } from '../api/broadcasts'
+import { fetchMyBroadcasts } from '../api/broadcasts'
+import { useAuth } from '../auth/auth-context'
 import { BroadcastOwnerActions } from '../components/BroadcastOwnerActions'
 import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
 import { Button } from '../components/ui/button'
+import { viewBroadcast } from '../lib/broadcast-view'
 import { formatDateTime } from '../lib/format'
-
-function statusText(broadcast: BroadcastSummary): string {
-  if (broadcast.kind === 'RECORDING') return '-'
-  return broadcast.status === 'ON_AIR' ? '방송 중' : '종료'
-}
 
 /** 내가 올리거나 송출한 방송을 최신순으로 보여 주고 제목 수정·삭제를 맡긴다. 로그인 확인은 라우트가 한다. */
 export function MyBroadcastsPage() {
+  const { state } = useAuth()
   const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } =
     useInfiniteQuery({
       queryKey: broadcastKeys.mine(),
@@ -100,17 +98,12 @@ export function MyBroadcastsPage() {
                   <td className="py-3 pr-4 whitespace-nowrap">
                     {broadcast.kind === 'LIVE' ? '라이브' : '녹화방송'}
                   </td>
-                  <td className="py-3 pr-4 whitespace-nowrap">{statusText(broadcast)}</td>
+                  <td className="py-3 pr-4 whitespace-nowrap">{viewBroadcast(broadcast, state).statusLabel}</td>
                   <td className="py-3 pr-4 whitespace-nowrap text-sub">
                     <time dateTime={broadcast.createdAt}>{formatDateTime(broadcast.createdAt)}</time>
                   </td>
                   <td className="py-3">
-                    <div className="flex gap-2">
-                      <BroadcastOwnerActions
-                        broadcast={broadcast}
-                        onAir={broadcast.kind === 'LIVE' && broadcast.status === 'ON_AIR'}
-                      />
-                    </div>
+                    <BroadcastOwnerActions broadcast={broadcast} className="flex gap-2" />
                   </td>
                 </tr>
               ))}

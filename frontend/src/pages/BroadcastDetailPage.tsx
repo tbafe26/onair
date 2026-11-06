@@ -5,6 +5,7 @@ import { broadcastKeys } from '../api/broadcast-keys'
 import {
   decodeFailure,
   fetchBroadcast,
+  type BroadcastDetail,
   type LiveBroadcastDetail,
   type RecordingBroadcastDetail,
 } from '../api/broadcasts'
@@ -16,6 +17,7 @@ import { RecordingComments } from '../components/RecordingComments'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
 import { VideoPlayer } from '../components/VideoPlayer'
+import { broadcastTimes, viewBroadcast } from '../lib/broadcast-view'
 import { formatDateTime } from '../lib/format'
 import { useLiveViewer } from '../live/useLiveViewer'
 
@@ -51,21 +53,22 @@ export function BroadcastDetailPage() {
   }
 }
 
-/** 소유자에게만 "제목 수정"·"삭제"를 보여 준다. 화면에서 숨기는 것은 보조 수단이고 권한은 서버가 검사한다. */
-function OwnerActions({
-  broadcast,
-  onAir = false,
-}: {
-  broadcast: { id: number; title: string; owner: { id: number } }
-  onAir?: boolean
-}) {
-  const { state } = useAuth()
+/** 녹화방송·라이브방송 상세가 함께 쓰는 머리: 제목, 소유자, 시각, 관리 버튼. */
+function BroadcastHeader({ broadcast }: { broadcast: BroadcastDetail }) {
   const navigate = useNavigate()
-  if (state.status !== 'user' || state.user.id !== broadcast.owner.id) return null
   return (
-    <div className="mt-3 flex gap-2">
-      <BroadcastOwnerActions broadcast={broadcast} onAir={onAir} onDeleted={() => void navigate('/')} />
-    </div>
+    <>
+      <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={broadcast.title}>
+        {broadcast.title}
+      </h1>
+      <p className="mt-2 font-semibold text-foreground">{broadcast.owner.nickname}</p>
+      {broadcastTimes(broadcast).map(({ label, at }) => (
+        <p key={label ?? 'created'} className="mt-1 text-sub">
+          {label} <time dateTime={at}>{formatDateTime(at)}</time>
+        </p>
+      ))}
+      <BroadcastOwnerActions broadcast={broadcast} className="mt-3 flex gap-2" onDeleted={() => void navigate('/')} />
+    </>
   )
 }
 
@@ -83,14 +86,7 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
           }}
         />
         <div className="px-5">
-          <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
-            {data.title}
-          </h1>
-          <p className="mt-2 font-semibold text-foreground">{data.owner.nickname}</p>
-          <p className="mt-1 text-sub">
-            <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
-          </p>
-          <OwnerActions broadcast={data} />
+          <BroadcastHeader broadcast={data} />
           <RecordingComments broadcastId={data.id} />
         </div>
       </section>
@@ -103,7 +99,8 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
 
 /** 라이브방송 상세. 방송 중이면 WebRTC로 영상을 받아 보여 주고, 종료됐으면 종료 안내를 보여 준다. */
 function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
-  const onAir = data.status === 'ON_AIR'
+  const { state } = useAuth()
+  const { onAir } = viewBroadcast(data, state)
   return (
     <div className="-mx-5 -mt-8 flex flex-col lg:flex-row lg:items-start">
       <section className="min-w-0 flex-1">
@@ -113,19 +110,7 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
           <LiveStatusBox text={ENDED_TEXT} thumbnailUrl={data.thumbnailUrl} />
         )}
         <div className="px-5">
-          <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
-            {data.title}
-          </h1>
-          <p className="mt-2 font-semibold text-foreground">{data.owner.nickname}</p>
-          <p className="mt-1 text-sub">
-            시작 <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
-          </p>
-          {data.endedAt && (
-            <p className="mt-1 text-sub">
-              종료 <time dateTime={data.endedAt}>{formatDateTime(data.endedAt)}</time>
-            </p>
-          )}
-          <OwnerActions broadcast={data} onAir={onAir} />
+          <BroadcastHeader broadcast={data} />
         </div>
       </section>
       {/* 넓은 화면은 영상 오른쪽 360px 열, 좁은 화면은 영상 아래에 채팅을 두고 그 아래에 방송 더보기를 둔다. */}
