@@ -20,7 +20,20 @@ cd backend && ./gradlew test --tests BroadcastPagingApiTest
 cd frontend && pnpm vitest run src/pages/BroadcastDetailPage.test.tsx
 ```
 
-작업을 끝내기 전에 두 명령이 모두 green이어야 한다. 백엔드 → 프런트 순서로 하나씩 돌리고, 동시에 돌리지 않는다(동시에 돌리면 부하로 프런트 테스트가 실패할 수 있다).
+작업을 끝내기 전(커밋·push 전)에는 바꾼 곳과 관련된 테스트, 컴파일, 정적 검사까지 green이어야 한다. 백엔드 → 프런트 순서로 하나씩 돌리고, 동시에 돌리지 않는다(동시에 돌리면 부하로 프런트 테스트가 실패할 수 있다).
+
+```bash
+cd backend && ./gradlew compileJava compileTestJava test --tests '*Comment*'
+```
+
+```bash
+cd frontend && pnpm lint && pnpm build && pnpm vitest related --run src/components/RecordingComments.tsx
+```
+
+전체 테스트는 PR의 CI(필수 검사)가 돌린다. 다음처럼 여러 곳에 영향을 주는 변경일 때만 끝내기 전에 전체를 직접 돌린다. CI가 실패하면 원인을 고쳐 다시 push한다.
+
+- 공유 계약(`contracts/`), 보안 설정, 공통 테스트 도우미(`ApiTestSupport`, `src/test/`), 테스트·빌드 설정, 의존성을 바꿀 때
+- 바꾼 곳과 관련된 테스트를 고르기 어려울 때
 
 ```bash
 cd backend && ./gradlew build
