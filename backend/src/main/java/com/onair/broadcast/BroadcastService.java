@@ -172,9 +172,9 @@ class BroadcastService {
     Resource thumbnail(long id) {
         String key = repository.findById(id).orElseThrow(() -> new BroadcastNotFoundException(id)).thumbnailKey();
         if (key == null) {
-            throw new ThumbnailNotFoundException(id);
+            throw new ThumbnailNotFoundException();
         }
-        return storage.open(key).orElseThrow(() -> new MediaFileMissingException(id));
+        return storage.open(key).orElseThrow(() -> new MediaFileMissingException());
     }
 
     /** 영상 리소스와 저장된 파일 형식. 방송이 없거나 녹화방송이 아니면 404, 영상 파일이 사라졌으면 파일 없음 404 예외다. */
@@ -182,7 +182,7 @@ class BroadcastService {
     PlayableVideo video(long id) {
         RecordingBroadcast broadcast = findRecording(id);
         Resource resource = storage.open(broadcast.videoStorageKey())
-                .orElseThrow(() -> new MediaFileMissingException(id));
+                .orElseThrow(() -> new MediaFileMissingException());
         return new PlayableVideo(resource, broadcast.videoFormat());
     }
 
