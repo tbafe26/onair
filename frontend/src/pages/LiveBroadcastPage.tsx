@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type FormEvent } from 'react'
 import { useBlocker, useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
+import { ChatPanel } from '../components/ChatPanel'
 import { Button } from '../components/ui/button'
 import type { CameraFacing, CameraInfo, CameraUnavailableReason } from '../live/broadcaster'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
@@ -273,6 +274,7 @@ export function LiveBroadcastPage() {
           <p className="text-sub">{state.maxViewers === null
               ? `시청자 ${state.viewerCount}명`
               : `시청자 ${state.viewerCount}/${state.maxViewers}`}</p>
+          <ChatPanel broadcastId={state.broadcastId} className="h-72" />
           {confirmingEnd ? (
             <div role="alertdialog" aria-label="송출 종료 확인" className="flex flex-col gap-3 rounded-2xl bg-card p-5">
               <p className="font-semibold text-foreground">송출을 종료할까요?</p>

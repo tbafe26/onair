@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../auth/auth-context'
 import { BroadcastOwnerActions } from '../components/BroadcastOwnerActions'
 import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
+import { ChatPanel } from '../components/ChatPanel'
 import { RecordingComments } from '../components/RecordingComments'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
@@ -127,7 +128,9 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
           <OwnerActions broadcast={data} onAir={onAir} />
         </div>
       </section>
-      <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">
+      {/* 넓은 화면은 영상 오른쪽 360px 열, 좁은 화면은 영상 아래에 채팅을 두고 그 아래에 방송 더보기를 둔다. */}
+      <div className="flex w-full shrink-0 flex-col gap-6 px-5 pt-5 lg:w-[360px] lg:pt-0 lg:pr-5 lg:pl-5">
+        <ChatPanel key={data.id} broadcastId={data.id} className="h-[26rem] lg:h-[34rem]" />
         <MoreBroadcastsPanel currentId={data.id} />
       </div>
     </div>
