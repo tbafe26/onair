@@ -1,4 +1,7 @@
 import { decodeFailure, startLiveBroadcast } from '../api/broadcasts'
+import { fetchComments, postComment } from '../api/comments'
+import { parseChatMessage } from './chat-protocol'
+import type { ChatDeps } from './chat'
 import { StartRejectedError, type BroadcasterDeps } from './broadcaster'
 import { createBrowserPeerConnection } from './peer'
 import { asSignalMessage, START_FAILURE_MESSAGE, type SignalingChannel, type SignalingHandlers } from './signaling-protocol'
@@ -79,4 +82,41 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
 export const browserViewerDeps: ViewerDeps = {
   openSignaling,
   createPeerConnection: createBrowserPeerConnection,
+}
+
+function chatUrl(broadcastId: number): string {
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${scheme}//${window.location.host}/api/broadcasts/${broadcastId}/chat`
+}
+
+/** 실제 브라우저 API를 채팅 모듈에 연결한다. 채팅 WebSocket은 받기만 하고, 쓰기는 REST로 한다. */
+export const browserChatDeps: ChatDeps = {
+  openChat: (broadcastId, handlers) =>
+    new Promise((resolve, reject) => {
+      const socket = new WebSocket(chatUrl(broadcastId))
+      let manuallyClosed = false
+      socket.addEventListener('open', () =>
+        resolve({
+          close: () => {
+            manuallyClosed = true
+            socket.close()
+          },
+        }),
+      )
+      socket.addEventListener('error', () => reject(new Error('채팅 서버에 연결하지 못했습니다')))
+      socket.addEventListener('message', (event: MessageEvent) => {
+        if (typeof event.data !== 'string') return
+        try {
+          const message = parseChatMessage(JSON.parse(event.data))
+          if (message) handlers.onMessage(message)
+        } catch {
+          // 알아볼 수 없는 메시지는 무시한다.
+        }
+      })
+      socket.addEventListener('close', () => {
+        if (!manuallyClosed) handlers.onClose()
+      })
+    }),
+  fetchPage: (broadcastId, before) => fetchComments(broadcastId, before),
+  postComment,
 }
