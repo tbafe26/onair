@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.onair.api.AuthenticationRequiredException;
 import com.onair.auth.AppUser;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;

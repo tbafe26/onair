@@ -1,5 +1,10 @@
 package com.onair.broadcast;
 
+import com.onair.api.FieldViolation;
+import com.onair.api.InvalidRequestException;
+import com.onair.api.UploadLimit;
+import com.onair.api.UploadTooLargeException;
+import com.onair.media.MultipartInputs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -15,7 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
  * 상한이 필요한 다른 곳(업로드 정책, 멀티파트 설정, 413 응답)은 여기서 값을 가져간다.
  */
 @Component
-class RegistrationRules {
+public class RegistrationRules implements UploadLimit {
 
     static final int MAX_TITLE_LENGTH = 100;
     static final long MAX_THUMBNAIL_BYTES = DataSize.ofMegabytes(2).toBytes();
@@ -28,7 +33,13 @@ class RegistrationRules {
         this.maxVideoBytes = maxUploadSize.toBytes();
     }
 
-    long maxVideoBytes() {
+    @Override
+    public long maxThumbnailBytes() {
+        return MAX_THUMBNAIL_BYTES;
+    }
+
+    @Override
+    public long maxVideoBytes() {
         return maxVideoBytes;
     }
 
@@ -80,7 +91,7 @@ class RegistrationRules {
     }
 
     /** 라이브방송 시작 입력을 검사한다. 제목과 썸네일 규칙은 녹화방송과 같고, 틀리면 InvalidRequestException이다. */
-    StartLiveCommand validate(StartLiveCommand command) {
+    public StartLiveCommand validate(StartLiveCommand command) {
         List<FieldViolation> violations = new ArrayList<>();
         String title = checkTitle(command.title(), violations);
         MultipartFile thumbnail = checkThumbnail(command.thumbnail(), violations);
@@ -117,24 +128,11 @@ class RegistrationRules {
         }
         if (thumbnail.getSize() > MAX_THUMBNAIL_BYTES) {
             violations.add(new FieldViolation("thumbnail",
-                    "썸네일은 " + formatBytes(MAX_THUMBNAIL_BYTES) + " 이하여야 합니다"));
+                    "썸네일은 " + UploadLimit.formatBytes(MAX_THUMBNAIL_BYTES) + " 이하여야 합니다"));
         } else if (!isJpeg(readHead(thumbnail, 3))) {
             violations.add(new FieldViolation("thumbnail", "썸네일은 JPEG 이미지여야 합니다"));
         }
         return thumbnail;
-    }
-
-    /** 바이트 수를 "2MB", "512KB" 같은 문구로 바꾼다. 딱 떨어지지 않으면 바이트로 쓴다. */
-    static String formatBytes(long bytes) {
-        long mb = DataSize.ofMegabytes(1).toBytes();
-        long kb = DataSize.ofKilobytes(1).toBytes();
-        if (bytes % mb == 0) {
-            return bytes / mb + "MB";
-        }
-        if (bytes % kb == 0) {
-            return bytes / kb + "KB";
-        }
-        return bytes + "바이트";
     }
 
     // 화면(upload-rules.ts)과 같은 기준으로 앞뒤 공백을 뗀다: 유니코드 White_Space 속성 문자(줄 바꿈 없는 공백 포함).

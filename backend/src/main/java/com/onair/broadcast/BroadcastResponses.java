@@ -6,7 +6,7 @@ import com.onair.auth.AppUser;
  * 방송을 응답 모양(요약, 상세)으로 바꾼다. 공통 항목을 채우고 구체 타입별 항목과 API 주소를 더한다.
  * Broadcast는 sealed로 두지 않으므로(Hibernate 지연 프록시), 모르는 타입은 default에서 예외로 막는다.
  */
-final class BroadcastResponses {
+public final class BroadcastResponses {
 
     private static final String BASE_PATH = "/api/broadcasts/";
 
@@ -14,7 +14,7 @@ final class BroadcastResponses {
     }
 
     /** 방송 하나의 API 주소. 등록 응답의 Location과 영상·썸네일 주소가 모두 여기서 나온다. */
-    static String location(long id) {
+    public static String location(long id) {
         return BASE_PATH + id;
     }
 

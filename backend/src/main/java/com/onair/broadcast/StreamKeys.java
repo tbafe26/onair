@@ -8,7 +8,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 
 /** 송출 키 발급과 확인. 원문은 응답으로 한 번만 나가고, 저장소에는 SHA-256 해시만 둔다. */
-final class StreamKeys {
+public final class StreamKeys {
 
     private static final int KEY_BYTES = 32;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -16,13 +16,13 @@ final class StreamKeys {
     private StreamKeys() {
     }
 
-    static String generate() {
+    public static String generate() {
         byte[] bytes = new byte[KEY_BYTES];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    static String hash(String streamKey) {
+    public static String hash(String streamKey) {
         return HexFormat.of().formatHex(digest(streamKey));
     }
 

@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import com.onair.api.FieldViolation;
+import com.onair.api.InvalidRequestException;
+import com.onair.api.UploadTooLargeException;
 import java.time.Duration;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
