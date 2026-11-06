@@ -92,13 +92,13 @@ function CommentForm({ broadcastId }: { broadcastId: number }) {
     )
   }
 
-  const trimmedLength = content.trim().length
-  const remaining = MAX_COMMENT_LENGTH - content.trim().length
-  const canSubmit = trimmedLength > 0 && remaining >= 0 && !write.isPending
+  const trimmed = content.trim()
+  const remaining = MAX_COMMENT_LENGTH - trimmed.length
+  const canSubmit = trimmed.length > 0 && remaining >= 0 && !write.isPending
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (canSubmit) write.mutate(content.trim())
+    if (canSubmit) write.mutate(trimmed)
   }
 
   return (
