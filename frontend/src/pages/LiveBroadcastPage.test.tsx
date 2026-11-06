@@ -1,7 +1,8 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
 import type {
   BroadcasterDeps,
   SignalingChannel,
@@ -19,6 +20,13 @@ const fake = vi.hoisted(() => ({
   handlers: null as SignalingHandlers | null,
   tracks: [] as { stop: () => void }[],
   peers: [] as FakePeer[],
+  images: {} as ThumbnailImageDeps,
+}))
+
+vi.mock('../lib/thumbnail-image-browser', () => ({
+  browserImageDeps: new Proxy({} as ThumbnailImageDeps, {
+    get: (_target, key: string) => (fake.images as unknown as Record<string, unknown>)[key],
+  }),
 }))
 
 vi.mock('../live/browser-deps', () => ({
@@ -38,6 +46,10 @@ function resetFake(overrides: Partial<BroadcasterDeps> = {}) {
   fake.handlers = null
   fake.peers = []
   fake.tracks = [{ stop: vi.fn() }, { stop: vi.fn() }]
+  fake.images = {
+    decode: async () => ({ width: 4000, height: 3000, source: null, release: () => {} }),
+    encodeJpeg: async () => new Blob([new Uint8Array(500)], { type: 'image/jpeg' }),
+  }
   const stream = { getTracks: () => fake.tracks } as unknown as MediaStream
   fake.deps = {
     getUserMedia: async () => stream,
@@ -63,6 +75,9 @@ afterEach(() => {
 beforeEach(() => {
   resetFake()
   server.use(
+    http.get('/api/broadcasts/upload-policy', () =>
+      HttpResponse.json({ maxVideoBytes: 1000, maxThumbnailBytes: 2 * 1024 * 1024, maxTitleLength: 100 }),
+    ),
     http.get('/api/broadcasts/7', () =>
       HttpResponse.json({
         id: 7,
@@ -291,4 +306,121 @@ it('상한을 받으면 시청자 수를 현재/상한으로 보여 준다', asy
   })
 
   expect(await screen.findByText('시청자 3/5')).toBeInTheDocument()
+})
+
+describe('썸네일 선택', () => {
+  const created: string[] = []
+  const revoked: string[] = []
+
+  beforeEach(() => {
+    created.length = 0
+    revoked.length = 0
+    URL.createObjectURL = vi.fn(() => {
+      const url = `blob:preview-${created.length}`
+      created.push(url)
+      return url
+    })
+    URL.revokeObjectURL = vi.fn((url: string) => void revoked.push(url))
+  })
+
+  const picture = new File(['synthetic'], 'photo.png', { type: 'image/png' })
+
+  function startLiveSpy() {
+    const startLive = vi.fn<BroadcasterDeps['startLive']>(async () => ({ id: 7, streamKey: 'fake-stream-key' }))
+    resetFake({ startLive })
+    return startLive
+  }
+
+  it('고른 이미지를 변환해 미리 보여 주고, 송출을 시작할 때 JPEG로 함께 보낸다', async () => {
+    const startLive = startLiveSpy()
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+
+    await user.upload(await screen.findByLabelText(/썸네일/), picture)
+
+    expect(await screen.findByRole('img', { name: '썸네일 미리보기' })).toHaveAttribute('src', 'blob:preview-0')
+    await user.type(screen.getByLabelText('제목'), '내 라이브')
+    await user.click(screen.getByRole('button', { name: '송출 시작' }))
+
+    await waitFor(() => expect(startLive).toHaveBeenCalledTimes(1))
+    const sent = startLive.mock.calls[0][0]
+    expect(sent.title).toBe('내 라이브')
+    expect(sent.thumbnail?.type).toBe('image/jpeg')
+  })
+
+  it('고르지 않으면 썸네일 없이 시작한다', async () => {
+    const startLive = startLiveSpy()
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+
+    await user.type(await screen.findByLabelText('제목'), '내 라이브')
+    await user.click(screen.getByRole('button', { name: '송출 시작' }))
+
+    await waitFor(() => expect(startLive).toHaveBeenCalledTimes(1))
+    expect(startLive.mock.calls[0][0].thumbnail).toBeNull()
+  })
+
+  it('선택을 취소하면 미리보기가 사라지고 주소를 해제하며, 썸네일 없이 시작한다', async () => {
+    const startLive = startLiveSpy()
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+    await user.upload(await screen.findByLabelText(/썸네일/), picture)
+    await screen.findByRole('img', { name: '썸네일 미리보기' })
+
+    await user.click(screen.getByRole('button', { name: '썸네일 선택 취소' }))
+
+    expect(screen.queryByRole('img', { name: '썸네일 미리보기' })).not.toBeInTheDocument()
+    expect(revoked).toEqual(['blob:preview-0'])
+    await user.type(screen.getByLabelText('제목'), '내 라이브')
+    await user.click(screen.getByRole('button', { name: '송출 시작' }))
+    await waitFor(() => expect(startLive).toHaveBeenCalledTimes(1))
+    expect(startLive.mock.calls[0][0].thumbnail).toBeNull()
+  })
+
+  it('다른 이미지를 고르면 이전 미리보기 주소를 해제하고, 화면을 떠나면 마지막 주소도 해제한다', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderApp('/broadcasts/live/new')
+    const input = await screen.findByLabelText(/썸네일/)
+    await user.upload(input, picture)
+    await waitFor(() => expect(created).toEqual(['blob:preview-0']))
+
+    await user.upload(input, new File(['other'], 'other.webp', { type: 'image/webp' }))
+    await waitFor(() => expect(created).toHaveLength(2))
+    expect(revoked).toEqual(['blob:preview-0'])
+
+    unmount()
+    expect(revoked).toEqual(['blob:preview-0', 'blob:preview-1'])
+  })
+
+  it('브라우저가 열지 못하는 파일은 쓸 수 없다고 안내하고, 썸네일 없이 송출할 수 있다', async () => {
+    const startLive = startLiveSpy()
+    fake.images.decode = async () => {
+      throw new Error('열 수 없음')
+    }
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+
+    await user.upload(await screen.findByLabelText(/썸네일/), new File(['x'], 'doc.heic', { type: 'image/heic' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('썸네일로 쓸 수 없습니다')
+    expect(screen.queryByRole('img', { name: '썸네일 미리보기' })).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('제목'), '내 라이브')
+    await user.click(screen.getByRole('button', { name: '송출 시작' }))
+    await waitFor(() => expect(startLive).toHaveBeenCalledTimes(1))
+    expect(startLive.mock.calls[0][0].thumbnail).toBeNull()
+  })
+
+  it('송출을 시작하는 동안에는 썸네일을 바꾸거나 취소할 수 없다', async () => {
+    resetFake({ startLive: () => new Promise<{ id: number; streamKey: string }>(() => {}) })
+    const user = userEvent.setup()
+    renderApp('/broadcasts/live/new')
+    await user.upload(await screen.findByLabelText(/썸네일/), picture)
+    await screen.findByRole('img', { name: '썸네일 미리보기' })
+    await user.type(screen.getByLabelText('제목'), '내 라이브')
+
+    await user.click(screen.getByRole('button', { name: '송출 시작' }))
+
+    expect(await screen.findByLabelText(/썸네일/)).toBeDisabled()
+    expect(screen.getByRole('button', { name: '썸네일 선택 취소' })).toBeDisabled()
+  })
 })

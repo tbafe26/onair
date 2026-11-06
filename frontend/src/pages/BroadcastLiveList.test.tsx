@@ -130,3 +130,21 @@ it('창에 초점이 돌아오면 라이브 탭을 바로 갱신한다', async (
 
   await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2))
 })
+
+it('라이브 카드는 썸네일 주소를 쓰고, 없으면 기본 이미지를 보여 준다', async () => {
+  server.use(
+    http.get('/api/broadcasts', () =>
+      HttpResponse.json({
+        items: [live(2, 'ON_AIR', '/api/broadcasts/2/thumbnail'), live(1, 'ENDED')],
+        hasNext: false,
+      }),
+    ),
+  )
+
+  const { container } = renderApp('/?tab=live')
+
+  await screen.findByText('라이브 2')
+  expect(container.querySelector('a[href="/broadcasts/2"] img')).toHaveAttribute('src', '/api/broadcasts/2/thumbnail')
+  const withoutThumbnail = container.querySelector('a[href="/broadcasts/1"]') as HTMLElement
+  expect(within(withoutThumbnail).getByRole('img', { name: '썸네일 없음' })).toBeInTheDocument()
+})
