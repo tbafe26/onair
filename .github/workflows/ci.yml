@@ -119,9 +119,10 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
       - if: matrix.language == 'java-kotlin'
+        # 캐시된 결과를 쓰면 컴파일이 일어나지 않아 CodeQL이 코드를 못 본다. 항상 다시 컴파일한다.
         name: 백엔드 컴파일 (CodeQL 추적용)
         working-directory: backend
-        run: ./gradlew compileJava --no-daemon
+        run: ./gradlew compileJava --no-daemon --no-build-cache --rerun-tasks
       - uses: github/codeql-action/analyze@v3
         with:
           category: /language:${{ matrix.language }}
