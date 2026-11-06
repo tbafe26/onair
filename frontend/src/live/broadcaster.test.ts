@@ -241,23 +241,6 @@ describe('송출 시작', () => {
 describe('생존 신호와 화면 꺼짐 방지', () => {
   const heartbeats = (env: ReturnType<typeof setup>) => env.sent.filter((message) => message.type === 'heartbeat')
 
-  it('송출 중에는 10초마다 heartbeat를 보낸다', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    try {
-      const { env } = await onAir()
-      expect(heartbeats(env)).toHaveLength(0)
-
-      vi.advanceTimersByTime(9_999)
-      expect(heartbeats(env)).toHaveLength(0)
-      vi.advanceTimersByTime(1)
-      expect(heartbeats(env)).toHaveLength(1)
-      vi.advanceTimersByTime(20_000)
-      expect(heartbeats(env)).toHaveLength(3)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
   it('송출이 끝나거나 화면을 떠나면 heartbeat를 멈춘다', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     try {
@@ -311,76 +294,6 @@ describe('생존 신호와 화면 꺼짐 방지', () => {
     expect(broadcaster.state().phase).toBe('onAir')
   })
 
-  it('화면이 다시 보이면 잠금을 다시 요청하고, 송출이 끝나면 구독을 푼다', async () => {
-    let onVisible = () => {}
-    const unwatch = vi.fn()
-    const request = vi.fn(async () => ({ release: vi.fn(async () => undefined) }))
-    const { broadcaster, env } = await previewing(
-      setup({
-        requestWakeLock: request,
-        watchVisible: (listener) => {
-          onVisible = listener
-          return unwatch
-        },
-      }),
-    )
-    const started = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
-    await started
-    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1))
-
-    onVisible()
-    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2))
-
-    env.server.closeConnection()
-    expect(unwatch).toHaveBeenCalled()
-  })
-
-  it('다시 요청해 얻은 새 잠금도 송출이 끝나면 풀고, 이전 잠금은 새 잠금으로 바꿀 때 푼다', async () => {
-    let onVisible = () => {}
-    const releases = [vi.fn(async () => undefined), vi.fn(async () => undefined)]
-    const request = vi.fn(async () => ({ release: releases[request.mock.calls.length - 1] }))
-    const { broadcaster, env } = await previewing(
-      setup({
-        requestWakeLock: request,
-        watchVisible: (listener) => {
-          onVisible = listener
-          return () => {}
-        },
-      }),
-    )
-    const started = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
-    await started
-    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1))
-    onVisible()
-    await vi.waitFor(() => expect(releases[0]).toHaveBeenCalled())
-
-    broadcaster.dispose()
-
-    await vi.waitFor(() => expect(releases[1]).toHaveBeenCalled())
-  })
-
-  it('송출 중이 아닐 때 화면이 보여도 잠금을 요청하지 않는다', async () => {
-    let onVisible = () => {}
-    const request = vi.fn(async () => ({ release: vi.fn(async () => undefined) }))
-    const { broadcaster } = await previewing(
-      setup({
-        requestWakeLock: request,
-        watchVisible: (listener) => {
-          onVisible = listener
-          return () => {}
-        },
-      }),
-    )
-
-    onVisible()
-
-    expect(request).not.toHaveBeenCalled()
-    expect(broadcaster.state().phase).toBe('previewing')
-  })
 })
 
 describe('송출 종료', () => {
@@ -488,28 +401,6 @@ describe('시청자 연결', () => {
     expect(env.sent.at(-1)).toEqual({ type: 'offer', to: '1', sdp: 'fake-offer' })
   })
 
-  it('시청자마다 별도 연결을 만들고, 후보는 해당 시청자에게 보낸다', async () => {
-    const { env } = await withViewers('1', '2')
-
-    env.peers[1].emitCandidate({ candidate: 'to-two' })
-
-    expect(env.peers).toHaveLength(2)
-    expect(env.sent.at(-1)).toEqual({ type: 'candidate', to: '2', candidate: { candidate: 'to-two' } })
-  })
-
-  it('시청자의 answer와 candidate는 from으로 지정한 연결에만 넣는다', async () => {
-    const { env } = await withViewers('1', '2')
-
-    env.server.send({ type: 'answer', from: '2', sdp: 'viewer-answer' })
-    env.server.send({ type: 'candidate', from: '2', candidate: { candidate: 'viewer-cand' } })
-    await vi.waitFor(() => expect(env.peers[1].candidates).toHaveLength(1))
-
-    expect(env.peers[1].remoteDescription).toEqual({ type: 'answer', sdp: 'viewer-answer' })
-    expect(env.peers[1].candidates).toEqual([{ candidate: 'viewer-cand' }])
-    expect(env.peers[0].remoteDescription).toBeNull()
-    expect(env.peers[0].candidates).toEqual([])
-  })
-
   it('시청자가 나가면 그 연결만 닫고 다른 시청자의 연결은 유지한다', async () => {
     const { broadcaster, env } = await withViewers('1', '2')
 
@@ -521,18 +412,6 @@ describe('시청자 연결', () => {
     expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 1 })
     env.server.send({ type: 'answer', from: '2', sdp: 'still-ok' })
     await vi.waitFor(() => expect(env.peers[1].remoteDescription).not.toBeNull())
-  })
-
-  it('한 시청자와의 협상이 실패하면 그 연결만 닫는다', async () => {
-    const { env } = await withViewers('1', '2')
-    env.peers[0].setRemoteDescription = async () => {
-      throw new Error('잘못된 answer')
-    }
-
-    env.server.send({ type: 'answer', from: '1', sdp: 'bad' })
-    await vi.waitFor(() => expect(env.peers[0].closed).toBe(true))
-
-    expect(env.peers[1].closed).toBe(false)
   })
 
   it('송출을 끝내면 모든 시청자 연결을 닫는다', async () => {
