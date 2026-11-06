@@ -22,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 후원 모듈. 주문 만들기의 규칙(금액, 메시지, 방송 상태, 받는 사람)을 한 곳에 둔다. REST adapter가 이 모듈을 부른다.
+ * 후원 모듈. 주문 만들기의 규칙(금액, 메시지, 방송 상태, 받는 사람), 결제 승인과 승인 통지의 대조·확정,
+ * 결제창이 알린 실패·취소 기록, 방송 삭제 때의 후원 정리를 한 곳에 둔다. REST adapter가 이 모듈을 부른다.
+ * 확정된 후원의 내역 조회는 {@link DonationHistory}가 맡는다.
  * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
  */
 @Service
@@ -33,10 +35,10 @@ public class Donations implements BroadcastDeletionListener {
     static final long MIN_AMOUNT = 1_000;
     static final long MAX_AMOUNT = 500_000;
     static final long AMOUNT_UNIT = 1_000;
-    // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
     // 사용자가 결제창을 닫았을 때 토스가 failUrl로 넘기는 코드.
     static final String USER_CANCELED = "PAY_PROCESS_CANCELED";
     static final int MAX_FAILURE_CODE_LENGTH = 100;
+    // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
     static final String ORDER_NAME = "온에어 방송 후원";
 
     private final DonationRepository donations;
