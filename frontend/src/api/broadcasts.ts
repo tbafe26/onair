@@ -1,8 +1,11 @@
 import axios from 'axios'
 import { sizeLimitMessage } from '../lib/upload-rules'
 
-// 2단계에서 LIVE를 더하면 아래 합집합에 변형이 늘고, 처리하지 않은 곳을 타입 검사가 알려 준다.
-export type BroadcastKind = 'RECORDING'
+// 방송 종류가 늘면 아래 합집합에 변형이 늘고, 처리하지 않은 곳을 타입 검사가 알려 준다.
+export type BroadcastKind = 'RECORDING' | 'LIVE'
+
+/** 라이브방송 상태. 방송 중에서 종료로만 바뀐다. */
+export type LiveStatus = 'ON_AIR' | 'ENDED'
 
 // 목록 카드에 쓰는 방송 요약. 썸네일이 없으면 thumbnailUrl이 null이다.
 export interface RecordingBroadcastSummary {
@@ -14,7 +17,17 @@ export interface RecordingBroadcastSummary {
   thumbnailUrl: string | null
 }
 
-export type BroadcastSummary = RecordingBroadcastSummary
+// 라이브방송의 createdAt은 송출 시작 시각이다. 재생 시간은 없다.
+export interface LiveBroadcastSummary {
+  id: number
+  kind: 'LIVE'
+  title: string
+  createdAt: string
+  thumbnailUrl: string | null
+  status: LiveStatus
+}
+
+export type BroadcastSummary = RecordingBroadcastSummary | LiveBroadcastSummary
 
 export interface BroadcastPage {
   items: BroadcastSummary[]
@@ -35,7 +48,12 @@ export interface RecordingBroadcastDetail {
   }
 }
 
-export type BroadcastDetail = RecordingBroadcastDetail
+export interface LiveBroadcastDetail extends LiveBroadcastSummary {
+  /** 종료 시각. 방송 중이면 null이다. */
+  endedAt: string | null
+}
+
+export type BroadcastDetail = RecordingBroadcastDetail | LiveBroadcastDetail
 
 /** 서버가 알려 주는 업로드 크기 상한(바이트). */
 export interface UploadPolicy {
@@ -80,7 +98,7 @@ export async function fetchBroadcast(id: string): Promise<BroadcastDetail> {
 export async function registerBroadcast(
   input: RegisterBroadcastInput,
   onProgress?: (percent: number) => void,
-): Promise<BroadcastDetail> {
+): Promise<RecordingBroadcastDetail> {
   const form = new FormData()
   form.append('title', input.title)
   form.append('video', input.video)
@@ -88,11 +106,29 @@ export async function registerBroadcast(
   if (input.durationSeconds !== null) {
     form.append('durationSeconds', String(input.durationSeconds))
   }
-  const response = await axios.post<BroadcastDetail>('/api/broadcasts', form, {
+  const response = await axios.post<RecordingBroadcastDetail>('/api/broadcasts', form, {
     onUploadProgress: (event) => {
       if (event.total) onProgress?.(Math.round((event.loaded / event.total) * 100))
     },
   })
+  return response.data
+}
+
+/** 라이브방송 시작이 돌려주는 값. 송출 키는 이 응답에만 있고 어떤 조회 응답에도 없다. */
+export interface StartedLive {
+  id: number
+  streamKey: string
+}
+
+/** 라이브방송을 시작한다(송출 시작). */
+export async function startLiveBroadcast(input: {
+  title: string
+  thumbnail: Blob | null
+}): Promise<StartedLive> {
+  const form = new FormData()
+  form.append('title', input.title)
+  if (input.thumbnail) form.append('thumbnail', input.thumbnail, 'thumbnail.jpg')
+  const response = await axios.post<StartedLive>('/api/broadcasts/live', form)
   return response.data
 }
 

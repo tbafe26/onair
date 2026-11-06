@@ -17,8 +17,10 @@ const tabs: { kind: BroadcastKindFilter; label: string }[] = [
   { kind: 'RECORDING', label: '녹화방송' },
 ]
 
-// 라이브방송은 송출 화면(티켓 04)이 생기기 전까지 비어 있으므로 기본 탭은 녹화방송이다.
-const DEFAULT_KIND: BroadcastKindFilter = 'RECORDING'
+const DEFAULT_KIND: BroadcastKindFilter = 'LIVE'
+
+// 라이브 탭은 방송 상태가 바뀌므로 주기적으로 다시 불러온다. 창에 초점이 돌아오면(기본 동작) 바로 갱신된다.
+const LIVE_REFETCH_INTERVAL_MS = 15_000
 
 function parseKind(value: string | null): BroadcastKindFilter {
   return tabs.find((t) => t.kind === value)?.kind ?? DEFAULT_KIND
@@ -40,6 +42,8 @@ export function BroadcastListPage() {
     queryKey: broadcastKeys.infinite(kind),
     queryFn: ({ pageParam }) => fetchBroadcasts(pageParam, kind),
     initialPageParam: undefined as number | undefined,
+    refetchInterval: kind === 'LIVE' ? LIVE_REFETCH_INTERVAL_MS : false,
+    refetchOnWindowFocus: true,
     // 마지막 묶음의 마지막 id보다 오래된 방송을 이어 받는다. 더 없으면 undefined다.
     getNextPageParam: (lastPage) =>
       lastPage.hasNext ? lastPage.items[lastPage.items.length - 1]?.id : undefined,
@@ -105,7 +109,10 @@ export function BroadcastListPage() {
       {data && items.length === 0 && kind === 'LIVE' && (
         <div className="mt-24 flex flex-col items-center gap-4 text-center">
           <Radio className="size-12 text-sub" aria-hidden="true" />
-          <p className="text-base text-sub">진행 중인 라이브 방송이 없습니다</p>
+          <p className="text-base text-sub">라이브 방송이 없습니다</p>
+          <Button asChild>
+            <Link to="/broadcasts/live/new">라이브 송출</Link>
+          </Button>
         </div>
       )}
       {data && items.length === 0 && kind === 'RECORDING' && (

@@ -1,7 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { decodeFailure, fetchBroadcast, type RecordingBroadcastDetail } from '../api/broadcasts'
+import {
+  decodeFailure,
+  fetchBroadcast,
+  type LiveBroadcastDetail,
+  type RecordingBroadcastDetail,
+} from '../api/broadcasts'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
 import { VideoPlayer } from '../components/VideoPlayer'
@@ -34,6 +39,8 @@ export function BroadcastDetailPage() {
   switch (data.kind) {
     case 'RECORDING':
       return <RecordingDetail broadcast={data} />
+    case 'LIVE':
+      return <LiveDetail broadcast={data} />
   }
 }
 
@@ -57,6 +64,38 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
           <p className="mt-2 text-sub">
             <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
           </p>
+        </div>
+      </section>
+      <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">
+        <MoreBroadcastsPanel currentId={data.id} />
+      </div>
+    </div>
+  )
+}
+
+/** 라이브방송 상세. 영상 시청은 이어지는 티켓에서 붙이고, 지금은 상태 문구와 시각을 보여 준다. */
+function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
+  const onAir = data.status === 'ON_AIR'
+  return (
+    <div className="-mx-5 -mt-8 flex flex-col lg:flex-row lg:items-start">
+      <section className="min-w-0 flex-1">
+        <div className="flex aspect-video w-full items-center justify-center bg-black text-white">
+          <p role="status" className="px-5 text-center text-lg font-semibold">
+            {onAir ? '방송 중' : '방송이 종료되었습니다'}
+          </p>
+        </div>
+        <div className="px-5">
+          <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
+            {data.title}
+          </h1>
+          <p className="mt-2 text-sub">
+            시작 <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
+          </p>
+          {data.endedAt && (
+            <p className="mt-1 text-sub">
+              종료 <time dateTime={data.endedAt}>{formatDateTime(data.endedAt)}</time>
+            </p>
+          )}
         </div>
       </section>
       <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">

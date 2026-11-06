@@ -33,8 +33,11 @@ export function Header({ onToggleSidebar, sidebarExpanded }: HeaderProps) {
         <Button variant="ghost" size="icon" aria-label="테마 전환" onClick={toggleTheme}>
           {theme === 'dark' ? <Sun className="size-6" /> : <Moon className="size-6" />}
         </Button>
+        <Button asChild variant="outline" className="h-9 px-5">
+          <Link to="/broadcasts/new">녹화방송 등록</Link>
+        </Button>
         <Button asChild className="h-9 px-5">
-          <Link to="/broadcasts/new">방송 등록</Link>
+          <Link to="/broadcasts/live/new">라이브 송출</Link>
         </Button>
       </div>
     </header>
