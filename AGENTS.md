@@ -39,6 +39,7 @@ cd frontend && pnpm lint && pnpm test && pnpm build
 ## 규칙
 
 - 주석, 커밋 메시지, 문서는 한국어로 쓴다. 변수명과 함수명은 영어로 쓴다.
+- 주석은 코드만 보고 이유를 알 수 없을 때만 단다. 변경마다 설명 주석을 붙이지 않는다. 바꾼 이유는 커밋 메시지에 쓴다.
 - 커밋 메시지는 Conventional Commits 형식으로 쓴다. type은 영어(`feat`, `fix`, `refactor`, `test`, `docs`, `chore`), 제목과 본문은 한국어다. 예: `feat: 녹화방송 등록 API 추가`
   - 제목은 50자 안팎, 끝에 마침표를 찍지 않는다. 제목과 본문 사이는 한 줄 띄운다.
   - 본문에는 무엇을 왜 바꿨는지 쓴다. 한 커밋에는 논리적 변경 하나만 담는다.
@@ -51,12 +52,25 @@ cd frontend && pnpm lint && pnpm test && pnpm build
 
 비밀 값이 나갈 수 있는 경로마다 막는다. 하나가 뚫려도 다음 단계에서 걸린다.
 
+### 필수 규칙: 공개되는 곳에 민감 정보를 올리지 않는다
+
+공개되는 곳은 커밋(내용, 메시지, 파일 이름), 태그, 브랜치 이름, 이슈·PR·릴리스 본문과 댓글, CI 로그와 빌드 결과물이다.
+
+- 금지: 비밀 값(토큰, 키, 비밀번호, 송출 키), IP 주소(사설 포함), 로컬 경로의 사용자 이름(`C:\Users\<이름>` 등), 기기·Wi-Fi·호스트 이름, 개인 이메일, 실제 사용자 데이터(업로드 영상, DB 내용, 스크린샷 속 개인 정보)
+- 대신 자리표시를 쓴다: `<PC의 LAN 주소>`, `<사용자 홈>`, `~/.onair/...`
+- 올리기 전에 직접 읽고 검사한다. 내가 쓰지 않았거나 도중에 바뀐 글도 예외가 없다. 커밋은 gitleaks(`.gitleaks.toml`의 사용자 규칙 포함)가, 이슈·PR 본문은 게시 직전의 패턴 검사가 맡는다.
+- **애매하면 올리지 않고 사용자에게 먼저 확인한다.** 민감 정보인지 판단이 서지 않는 값, 검사에 걸렸지만 오탐으로 보이는 값, 허용 목록에 추가하려는 값이 여기에 해당한다.
+- 예외(사용자가 허용함): 커밋 작성자의 GitHub 계정 정보(이름, 이메일), 커밋·태그의 시각과 시간대, 개발 환경의 종류(Windows PC, 안드로이드 휴대폰 등 기종이 드러나지 않는 수준)
+
+### 경로별 방어
+
 - `.gitignore`: `.env`, 인증서·개인 키·키 저장소, 인증 정보가 든 로컬 설정, 로그를 제외한다. 새 종류의 비밀 파일이 생기면 먼저 규칙을 추가한다.
-- git 훅(`.githooks/`): pre-commit은 스테이징된 변경을, pre-push는 올라갈 커밋을 gitleaks로 검사해 막는다. clone한 뒤 `git config core.hooksPath .githooks`로 한 번 켠다. gitleaks가 없으면 훅이 커밋과 push를 막는다. `--no-verify`로 훅을 건너뛰지 않는다.
+- git 훅(`.githooks/`): pre-commit은 스테이징된 변경을, commit-msg는 커밋 메시지를, pre-push는 올라갈 커밋을 검사해 막는다. 비밀 값은 gitleaks가, 개인 정보(사설 IP, 사용자 경로, 이 PC의 호스트·Wi-Fi 이름과 LAN 주소)는 `check-public-text.js`가 맡는다. 이 PC의 실제 값은 실행할 때 읽어 비교만 하므로 저장소에 남지 않는다. clone한 뒤 `git config core.hooksPath .githooks`로 한 번 켠다. gitleaks나 node가 없으면 훅이 커밋과 push를 막는다. `--no-verify`로 훅을 건너뛰지 않는다.
+- 이슈·PR·릴리스·댓글: Claude Code의 PreToolUse 훅(`.claude/settings.local.json`, git 제외)이 `gh`로 글을 올리는 명령과 본문 파일을 `check-public-text.js --hook`으로 검사해 막는다. 사람이 직접 올릴 때는 `node .githooks/check-public-text.js <본문 파일>`로 먼저 검사한다.
 - CI: gitleaks가 커밋 이력 전체를 검사하고, `main` 보호 규칙이 이 검사의 통과를 병합 조건으로 건다.
 - GitHub: secret scanning과 push protection이 알려진 형식의 토큰이 담긴 push를 거절한다.
 - 코드: 비밀 값과 송출 키를 로그, 오류 응답, 조회 응답에 넣지 않는다. 프런트에서 `VITE_`로 시작하는 환경변수는 번들에 그대로 들어가므로 비밀 값을 두지 않는다.
-- 커밋 작성자 이메일은 GitHub noreply 주소를 쓴다. 이슈, PR, 릴리스 본문에도 비밀 값이나 개인 정보를 넣지 않는다.
+- 커밋 작성자 이메일은 GitHub noreply 주소를 쓴다.
 - 비밀 값이 이미 커밋되었다면 기록에서 지우는 것보다 먼저 그 값을 폐기·교체한다.
 - gh 토큰의 `workflow` 권한은 평소에 두지 않는다. `.github/workflows/`를 바꾼 커밋을 push할 때만 사용자가 `gh auth refresh -h github.com -s workflow`로 잠시 추가하고, push가 끝나면 `gh auth refresh -h github.com -r workflow`로 바로 회수한다. 권한 추가와 회수는 브라우저 인증이 필요해 사용자가 직접 한다.
 

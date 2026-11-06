@@ -1,6 +1,5 @@
 #!/bin/sh
-# 커밋 직전에 스테이징된 변경에서 비밀 값(API 키, 토큰, 비밀번호 등)을 찾는다.
-# 찾으면 커밋을 막는다. 켜는 방법: git config core.hooksPath .githooks
+# 스테이징된 변경에서 비밀 값과 개인 정보를 찾아 커밋을 막는다. 켜는 방법: git config core.hooksPath .githooks
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "[pre-commit] gitleaks가 없어 커밋을 막았습니다. 설치한 뒤 다시 커밋하세요." >&2
@@ -13,3 +12,10 @@ if ! gitleaks git --pre-commit --staged --redact --no-banner; then
   echo "  해당 값을 지우고 .env(git 제외)로 옮긴 뒤 다시 커밋하세요." >&2
   exit 1
 fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[pre-commit] node가 없어 개인 정보 검사를 할 수 없어 커밋을 막았습니다." >&2
+  exit 1
+fi
+
+node "$(dirname "$0")/check-public-text.js" --staged || exit 1
