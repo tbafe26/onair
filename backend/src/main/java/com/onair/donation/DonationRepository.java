@@ -1,7 +1,9 @@
 package com.onair.donation;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -26,6 +28,22 @@ interface DonationRepository extends JpaRepository<Donation, Long> {
             + " d.paymentKey = :paymentKey, d.confirmedAt = :at"
             + " where d.id = :id and d.status = com.onair.donation.DonationStatus.PENDING")
     int confirmIfPending(@Param("id") long id, @Param("paymentKey") String paymentKey, @Param("at") Instant at);
+
+    /** 확정 시각이 (at, id) 위치보다 이른 확정 후원을 최신순으로 돌려준다. 후원자는 함께 읽는다. */
+    @Query("select d from Donation d join fetch d.donor where d.broadcast.id = :broadcastId"
+            + " and d.status = com.onair.donation.DonationStatus.CONFIRMED"
+            + " and (d.confirmedAt < :at or (d.confirmedAt = :at and d.id < :id))"
+            + " order by d.confirmedAt desc, d.id desc")
+    List<Donation> findConfirmedBefore(@Param("broadcastId") long broadcastId, @Param("at") Instant at,
+            @Param("id") long id, Pageable pageable);
+
+    @Query("select coalesce(sum(d.amount), 0) from Donation d where d.broadcast.id = :broadcastId"
+            + " and d.status = com.onair.donation.DonationStatus.CONFIRMED")
+    long confirmedAmountOf(@Param("broadcastId") long broadcastId);
+
+    @Query("select count(d) from Donation d where d.broadcast.id = :broadcastId"
+            + " and d.status = com.onair.donation.DonationStatus.CONFIRMED")
+    long confirmedCountOf(@Param("broadcastId") long broadcastId);
 
     /** 대기일 때만 실패로 바꾸고 코드를 남긴다. */
     @Transactional
