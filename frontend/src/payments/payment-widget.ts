@@ -34,11 +34,12 @@ export function usePaymentWidget(): PaymentWidget {
   return widget
 }
 
-/** 결제창이 돌아올 주소. 현재 출처로 만들고, 실패 주소에는 우리 주문 번호와 돌아갈 방송 id를 미리 붙인다. */
+/** 결제창이 돌아올 주소. 현재 출처로 만들고, 돌아갈 방송 id를 두 주소에 미리 붙이며 실패 주소에는 우리 주문 번호도 붙인다. */
 export function paymentReturnUrls(origin: string, orderId: string, broadcastId: number) {
   const failParams = new URLSearchParams({ orderId, broadcastId: String(broadcastId) })
+  const successParams = new URLSearchParams({ broadcastId: String(broadcastId) })
   return {
-    successUrl: `${origin}/donations/success`,
+    successUrl: `${origin}/donations/success?${successParams.toString()}`,
     failUrl: `${origin}/donations/fail?${failParams.toString()}`,
   }
 }

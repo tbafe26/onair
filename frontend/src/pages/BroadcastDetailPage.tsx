@@ -14,6 +14,7 @@ import { BroadcastOwnerActions } from '../components/BroadcastOwnerActions'
 import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
 import { ChatPanel } from '../components/ChatPanel'
 import { DonationButton } from '../components/DonationButton'
+import { DonationNotice } from '../components/DonationNotice'
 import { RecordingComments } from '../components/RecordingComments'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
@@ -111,8 +112,9 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
           <LiveStatusBox text={ENDED_TEXT} thumbnailUrl={data.thumbnailUrl} />
         )}
         <div className="px-5">
+          <DonationNotice />
           <BroadcastHeader broadcast={data} />
-          {onAir && <DonationButton broadcastId={data.id} ownerId={data.owner.id} ownerNickname={data.owner.nickname} />}
+          {onAir &&<DonationButton broadcastId={data.id} ownerId={data.owner.id} ownerNickname={data.owner.nickname} />}
         </div>
       </section>
       {/* 넓은 화면은 영상 오른쪽 360px 열, 좁은 화면은 영상 아래에 채팅을 두고 그 아래에 방송 더보기를 둔다. */}
