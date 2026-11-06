@@ -28,11 +28,9 @@ import org.springframework.web.multipart.MultipartFile;
 class BroadcastController {
 
     private final BroadcastService service;
-    private final LiveBroadcasting live;
 
-    BroadcastController(BroadcastService service, LiveBroadcasting live) {
+    BroadcastController(BroadcastService service) {
         this.service = service;
-        this.live = live;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -82,13 +80,6 @@ class BroadcastController {
     @DeleteMapping("/{id}")
     ResponseEntity<Void> delete(@PathVariable long id, @AuthenticationPrincipal AuthenticatedUser user) {
         service.delete(id, AuthenticatedUser.idOf(user));
-        return ResponseEntity.noContent().build();
-    }
-
-    /** 소유자가 방송 중인 라이브방송을 종료한다. 이미 종료됐어도 204이고, 녹화방송은 409다. */
-    @PostMapping("/{id}/end")
-    ResponseEntity<Void> end(@PathVariable long id, @AuthenticationPrincipal AuthenticatedUser user) {
-        live.endByOwner(id, AuthenticatedUser.idOf(user));
         return ResponseEntity.noContent().build();
     }
 
