@@ -62,6 +62,7 @@ public abstract class ApiTestSupport {
         // DB 시각 정밀도보다 거칠게 맞춰, 저장하기 전과 읽은 뒤의 시각이 같게 한다.
         clock.set(Instant.now().truncatedTo(ChronoUnit.MILLIS));
         owner = null;
+        jdbc.update("delete from donation");
         jdbc.update("delete from broadcast_comment");
         repository.deleteAll();
         // 녹화방송은 영상을 PERSIST로만 연결해 방송을 지워도 영상 행이 남는다. 남으면 앞선 테스트의 영상이 섞인다.
