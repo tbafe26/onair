@@ -3,6 +3,7 @@ package com.onair.donation;
 import com.onair.api.FieldViolation;
 import com.onair.api.InvalidRequestException;
 import com.onair.auth.AuthenticatedUser;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,7 +36,7 @@ class DonationConfirmController {
     record ConfirmRequest(String paymentKey, String orderId, Long amount) {
 
         List<FieldViolation> violations() {
-            List<FieldViolation> violations = new java.util.ArrayList<>();
+            List<FieldViolation> violations = new ArrayList<>();
             if (paymentKey == null || paymentKey.isBlank()) {
                 violations.add(new FieldViolation("paymentKey", "결제 키가 필요합니다"));
             }

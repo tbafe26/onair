@@ -22,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 후원 모듈. 주문 만들기의 규칙(금액, 메시지, 방송 상태, 받는 사람)을 한 곳에 둔다. REST adapter가 이 모듈을 부른다.
+ * 후원 모듈. 주문 만들기의 규칙(금액, 메시지, 방송 상태, 받는 사람), 결제 승인과 승인 통지의 대조·확정,
+ * 결제창이 알린 실패·취소 기록, 방송 삭제 때의 후원 정리를 한 곳에 둔다. REST adapter가 이 모듈을 부른다.
+ * 확정된 후원의 내역 조회는 {@link DonationHistory}가 맡는다.
  * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
  */
 @Service
@@ -33,10 +35,12 @@ public class Donations implements BroadcastDeletionListener {
     static final long MIN_AMOUNT = 1_000;
     static final long MAX_AMOUNT = 500_000;
     static final long AMOUNT_UNIT = 1_000;
-    // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
     // 사용자가 결제창을 닫았을 때 토스가 failUrl로 넘기는 코드.
     static final String USER_CANCELED = "PAY_PROCESS_CANCELED";
     static final int MAX_FAILURE_CODE_LENGTH = 100;
+    static final String AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
+    static final String PAYMENT_MISMATCH = "PAYMENT_MISMATCH";
+    // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
     static final String ORDER_NAME = "온에어 방송 후원";
 
     private final DonationRepository donations;
@@ -49,13 +53,13 @@ public class Donations implements BroadcastDeletionListener {
 
     Donations(DonationRepository donations, BroadcastRepository broadcasts, AppUserRepository users,
             TossSettings toss, PaymentGateway payments, Clock clock, LiveChat chat) {
-        this.chat = chat;
         this.donations = donations;
         this.broadcasts = broadcasts;
         this.users = users;
         this.toss = toss;
         this.payments = payments;
         this.clock = clock;
+        this.chat = chat;
     }
 
     /** 대기 후원을 만든다. 로그인(401), 방송 존재(404), 입력 규칙(400), 방송 중(409), 자기 방송(403), 결제 설정(503) 순으로 확인한다. */
@@ -88,11 +92,7 @@ public class Donations implements BroadcastDeletionListener {
      * 방송이 이미 끝났어도 확정한다.
      */
     public DonationView confirm(Long userId, String paymentKey, String orderId, long amount) {
-        long donorId = Requester.id(userId);
-        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
-        if (donation.getDonor().getId() != donorId) {
-            throw new NotDonorException();
-        }
+        Donation donation = ownedDonation(Requester.id(userId), orderId);
         if (donation.getStatus() == DonationStatus.CONFIRMED) {
             return decided(donation, paymentKey, amount);
         }
@@ -100,7 +100,7 @@ public class Donations implements BroadcastDeletionListener {
             throw new DonationNotPayableException();
         }
         if (amount != donation.getAmount()) {
-            fail(donation, "AMOUNT_MISMATCH");
+            fail(donation, AMOUNT_MISMATCH);
             throw new AmountMismatchException();
         }
         PaymentResult result = payments.confirm(paymentKey, orderId, amount);
@@ -112,11 +112,11 @@ public class Donations implements BroadcastDeletionListener {
                 return failedOrConfirmed(donation, paymentKey, amount, rejected.code());
             }
             case PaymentResult.AlreadyProcessed processed -> {
-                return failedOrConfirmed(donation, paymentKey, amount, TossPaymentGateway.ALREADY_PROCESSED);
+                return failedOrConfirmed(donation, paymentKey, amount, PaymentResult.ALREADY_PROCESSED_CODE);
             }
             case PaymentResult.Paid paid -> {
                 if (!matches(paid, donation, paymentKey)) {
-                    return failedOrConfirmed(donation, paymentKey, amount, "PAYMENT_MISMATCH");
+                    return failedOrConfirmed(donation, paymentKey, amount, PAYMENT_MISMATCH);
                 }
             }
         }
@@ -141,6 +141,15 @@ public class Donations implements BroadcastDeletionListener {
         } catch (PaymentGatewayUnavailableException | DonationNotPayableException e) {
             // 결제 서비스가 다시 통지하거나 사용자가 승인하면 된다.
         }
+    }
+
+    // 주문 번호로 후원을 찾고 후원자 본인인지 확인한다. 없으면 404, 다른 사람의 주문이면 403이다.
+    private Donation ownedDonation(long donorId, String orderId) {
+        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
+        if (donation.getDonor().getId() != donorId) {
+            throw new NotDonorException();
+        }
+        return donation;
     }
 
     // 후원을 확정한다. 결제가 확인된 뒤라 대기가 아니어도 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
@@ -178,7 +187,7 @@ public class Donations implements BroadcastDeletionListener {
 
     // 결제 서비스가 돌려준 결제가 저장된 후원과 맞는지 본다: 상태 DONE, 주문 번호, 금액, 결제 키.
     private static boolean matches(PaymentResult.Paid paid, Donation donation, String paymentKey) {
-        return "DONE".equals(paid.status())
+        return PaymentResult.STATUS_DONE.equals(paid.status())
                 && donation.getOrderId().equals(paid.orderId())
                 && donation.getAmount() == paid.totalAmount()
                 && paymentKey.equals(paid.paymentKey());
@@ -200,11 +209,7 @@ public class Donations implements BroadcastDeletionListener {
      * 사용자가 결제창을 닫으면 취소, 그 밖의 코드는 실패다. 이미 정해진 주문은 그대로 두고 현재 상태를 돌려준다.
      */
     public DonationStatus recordFailure(Long userId, String orderId, String code) {
-        long donorId = Requester.id(userId);
-        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
-        if (donation.getDonor().getId() != donorId) {
-            throw new NotDonorException();
-        }
+        Donation donation = ownedDonation(Requester.id(userId), orderId);
         String stored = code.length() > MAX_FAILURE_CODE_LENGTH ? code.substring(0, MAX_FAILURE_CODE_LENGTH) : code;
         if (USER_CANCELED.equals(code)) {
             donations.cancelIfPending(donation.getId(), stored);

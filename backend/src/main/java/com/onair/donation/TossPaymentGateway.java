@@ -10,8 +10,6 @@ import org.springframework.web.client.RestClientException;
 /** 토스페이먼츠 결제 서비스 adapter. 승인(POST /v1/payments/confirm)과 조회(GET /v1/payments/{paymentKey})를 부른다. */
 class TossPaymentGateway implements PaymentGateway {
 
-    static final String ALREADY_PROCESSED = "ALREADY_PROCESSED_PAYMENT";
-
     private final RestClient client;
     private final String authorization;
     private final String testCode;
@@ -71,7 +69,7 @@ class TossPaymentGateway implements PaymentGateway {
                 if (failure == null || failure.code() == null) {
                     throw new PaymentGatewayUnavailableException("결제 서비스 응답을 해석하지 못했습니다");
                 }
-                if (ALREADY_PROCESSED.equals(failure.code())) {
+                if (PaymentResult.ALREADY_PROCESSED_CODE.equals(failure.code())) {
                     return new PaymentResult.AlreadyProcessed();
                 }
                 return new PaymentResult.Rejected(failure.code(), failure.message());
