@@ -76,4 +76,36 @@ public class Donation {
         this.status = DonationStatus.PENDING;
         this.createdAt = createdAt;
     }
+
+    Long getId() {
+        return id;
+    }
+
+    String getOrderId() {
+        return orderId;
+    }
+
+    String getPaymentKey() {
+        return paymentKey;
+    }
+
+    AppUser getDonor() {
+        return donor;
+    }
+
+    long getAmount() {
+        return amount;
+    }
+
+    String getMessage() {
+        return message;
+    }
+
+    DonationStatus getStatus() {
+        return status;
+    }
+
+    Instant getConfirmedAt() {
+        return confirmedAt;
+    }
 }

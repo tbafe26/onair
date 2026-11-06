@@ -89,6 +89,7 @@ class SecurityConfig {
                         // 본문을 읽기 전에 거른다. 그래야 비로그인 요청이 본문 오류(400)보다 먼저 401을 받는다.
                         .requestMatchers(HttpMethod.PATCH, "/api/broadcasts/*").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/broadcasts/*/donations").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/donations/confirm").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, e) -> writeProblem(

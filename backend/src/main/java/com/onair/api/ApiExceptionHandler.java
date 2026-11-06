@@ -19,7 +19,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** 모든 API 오류를 ProblemDetail(RFC 9457)로 바꾼다. 상태 코드: 400, 401, 403, 404, 409, 413, 416, 500. */
+/** 모든 API 오류를 ProblemDetail(RFC 9457)로 바꾼다. 상태 코드: 400, 401, 402, 403, 404, 409, 413, 416, 500, 502, 503. */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
