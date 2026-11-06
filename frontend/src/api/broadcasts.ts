@@ -108,6 +108,11 @@ export async function deleteBroadcast(id: number): Promise<void> {
   await apiClient.delete(`/api/broadcasts/${id}`)
 }
 
+/** 방송 중인 라이브방송을 종료한다(소유자만). 이미 종료됐어도 성공이다. */
+export async function endBroadcast(id: number): Promise<void> {
+  await apiClient.post(`/api/broadcasts/${id}/end`)
+}
+
 export async function fetchUploadPolicy(): Promise<UploadPolicy> {
   const response = await apiClient.get<UploadPolicy>('/api/broadcasts/upload-policy')
   return response.data

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { decodeFailure, deleteBroadcast, renameBroadcast } from '../api/broadcasts'
+import { decodeFailure, deleteBroadcast, endBroadcast, renameBroadcast } from '../api/broadcasts'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
 import { Button } from './ui/button'
 import { Modal } from './Modal'
@@ -112,6 +112,47 @@ export function DeleteBroadcastDialog({
         </Button>
         <Button type="button" variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
           삭제
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+/** 송출 종료 확인. 확인하면 종료하고 방송 데이터를 새로 받는다. 시청자 화면은 서버가 ended로 바꾼다. */
+export function EndBroadcastDialog({ broadcast, onClose }: { broadcast: Target; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+
+  const end = useMutation({
+    mutationFn: () => endBroadcast(broadcast.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: broadcastKeys.all })
+      onClose()
+    },
+    onError: (failure) => {
+      const decoded = decodeFailure(failure)
+      if (decoded.kind === 'forbidden') setError('소유자만 종료할 수 있습니다')
+      else if (decoded.kind === 'notFound') setError('이미 지워진 방송입니다')
+      else setError('송출을 종료하지 못했습니다. 잠시 뒤 다시 시도하세요')
+    },
+  })
+
+  return (
+    <Modal title="송출 종료" onClose={onClose}>
+      <p className="mt-4 break-words text-foreground">
+        &lsquo;{broadcast.title}&rsquo; 송출을 종료할까요? 시청자 화면도 바로 종료되며 다시 시작할 수 없습니다.
+      </p>
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <div className="mt-6 flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          취소
+        </Button>
+        <Button type="button" variant="destructive" disabled={end.isPending} onClick={() => end.mutate()}>
+          송출 종료
         </Button>
       </div>
     </Modal>

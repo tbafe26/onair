@@ -240,3 +240,46 @@ it('프로필 메뉴의 내 방송에서 이 화면으로 온다', async () => {
   await waitFor(() => expect(router.state.location.pathname).toBe('/me/broadcasts'))
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 })
+
+it('송출 종료 버튼은 방송 중인 라이브방송에만 있다', async () => {
+  signedInAs()
+  useMine([recording, onAirLive, endedLive])
+  renderApp('/me/broadcasts')
+
+  await screen.findByRole('row', { name: /내 라이브/ })
+  expect(within(rowOf('내 라이브')).getByRole('button', { name: '송출 종료' })).toBeInTheDocument()
+  expect(within(rowOf('끝난 라이브')).queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument()
+  expect(within(rowOf('내 녹화방송')).queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument()
+})
+
+it('송출 종료는 확인 대화상자에서 확인해야 보내고, 종료하면 상태가 종료로 바뀐다', async () => {
+  signedInAs()
+  let items: unknown[] = [onAirLive]
+  let endCalls = 0
+  server.use(
+    http.get('/api/me/broadcasts', () => HttpResponse.json({ items, hasNext: false })),
+    http.post('/api/broadcasts/11/end', () => {
+      endCalls += 1
+      items = [{ ...onAirLive, status: 'ENDED' }]
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  const user = userEvent.setup()
+  renderApp('/me/broadcasts')
+
+  await user.click(within(await screen.findByRole('row', { name: /내 라이브/ })).getByRole('button', { name: '송출 종료' }))
+  let dialog = screen.getByRole('dialog', { name: '송출 종료' })
+  await user.click(within(dialog).getByRole('button', { name: '취소' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(endCalls).toBe(0)
+
+  await user.click(within(rowOf('내 라이브')).getByRole('button', { name: '송출 종료' }))
+  dialog = screen.getByRole('dialog', { name: '송출 종료' })
+  await user.click(within(dialog).getByRole('button', { name: '송출 종료' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(endCalls).toBe(1)
+  await waitFor(() =>
+    expect(within(rowOf('내 라이브')).queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument(),
+  )
+})

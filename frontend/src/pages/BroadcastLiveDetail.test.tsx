@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, it } from 'vitest'
 import type { ViewerState } from '../live/viewer'
+import { signedInAs } from '../test/auth'
 import { fakeStream } from '../test/fakeLive'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
@@ -209,4 +210,42 @@ it('라이브방송 상세에 소유자 닉네임을 보여 준다', async () =>
 
   await screen.findByRole('heading', { name: '상세 라이브' })
   expect(screen.getByText('채널주인')).toBeInTheDocument()
+})
+
+it('소유자의 방송 중 상세에는 송출 종료 버튼이 있고, 확인하면 종료 상태로 바뀐다', async () => {
+  signedInAs()
+  stubLive('ON_AIR', null)
+  let ended = false
+  server.use(
+    http.get('/api/broadcasts/5', () =>
+      HttpResponse.json(ended ? liveDetail('ENDED', '2026-03-15T13:00:00Z') : liveDetail('ON_AIR', null)),
+    ),
+    http.post('/api/broadcasts/5/end', () => {
+      ended = true
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  const user = userEvent.setup()
+  renderApp('/broadcasts/5')
+
+  await user.click(await screen.findByRole('button', { name: '송출 종료' }))
+  await user.click(within(screen.getByRole('dialog', { name: '송출 종료' })).getByRole('button', { name: '송출 종료' }))
+
+  expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument()
+})
+
+it('종료된 라이브방송의 상세에는 송출 종료 버튼이 없다', async () => {
+  signedInAs()
+  stubLive('ENDED', '2026-03-15T13:00:00Z')
+  renderApp('/broadcasts/5')
+  await screen.findByText('방송이 종료되었습니다')
+  expect(screen.queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument()
+})
+
+it('비로그인 상태의 방송 중 상세에는 송출 종료 버튼이 없다', async () => {
+  stubLive('ON_AIR', null)
+  renderApp('/broadcasts/5')
+  await screen.findByRole('heading', { name: '상세 라이브' })
+  expect(screen.queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument()
 })
