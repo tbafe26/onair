@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, expect, it, vi } from 'vitest'
+import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
 import { extractVideoMetadata, releasePreview } from '../lib/video-metadata'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
@@ -12,6 +13,27 @@ vi.mock('../lib/video-metadata', () => ({
   releasePreview: vi.fn(),
   VideoUnreadableError: class VideoUnreadableError extends Error {},
 }))
+
+// 영상에서 뽑은 프레임도 이미지 변환을 거치므로 jsdom에 없는 브라우저 디코더·캔버스 대신 가짜를 넣는다.
+const fakeImages = vi.hoisted(() => ({ deps: {} as ThumbnailImageDeps }))
+
+vi.mock('../lib/thumbnail-image-browser', () => ({
+  browserImageDeps: new Proxy({} as ThumbnailImageDeps, {
+    get: (_target, key: string) => (fakeImages.deps as unknown as Record<string, unknown>)[key],
+  }),
+}))
+
+function imagesEncodingTo(sizeByQuality: (quality: number) => number) {
+  const qualities: number[] = []
+  fakeImages.deps = {
+    decode: async () => ({ width: 1920, height: 1080, source: null, release: () => {} }),
+    encodeJpeg: async (_image, _width, _height, quality) => {
+      qualities.push(quality)
+      return new Blob([new Uint8Array(sizeByQuality(quality))], { type: 'image/jpeg' })
+    },
+  }
+  return qualities
+}
 
 const mockedExtract = vi.mocked(extractVideoMetadata)
 
@@ -32,6 +54,7 @@ function uploadPolicyHandler(maxVideoBytes: number) {
 
 beforeEach(() => {
   mockedExtract.mockReset()
+  imagesEncodingTo(() => 10)
   server.use(uploadPolicyHandler(10 * MB))
 })
 
@@ -119,16 +142,19 @@ it('등록에 성공하면 방금 만든 방송의 상세 화면으로 이동한
   expect(body).toMatch(/name="thumbnail"; filename="thumbnail\.jpg"/)
 })
 
-it('자동 썸네일이 서버의 썸네일 상한을 넘으면 썸네일 없이 등록한다', async () => {
+function policyWithThumbnailLimit(maxThumbnailBytes: number) {
   server.use(
     http.get('/api/broadcasts/upload-policy', () =>
-      HttpResponse.json({ maxVideoBytes: 10 * MB, maxThumbnailBytes: 2, maxTitleLength: 100 }),
+      HttpResponse.json({ maxVideoBytes: 10 * MB, maxThumbnailBytes, maxTitleLength: 100 }),
     ),
   )
+}
+
+async function registerWithCapturedFrame(title: string) {
   mockedExtract.mockResolvedValue({
     durationSeconds: 30,
     thumbnail: new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }),
-    previewUrl: 'blob:preview-big',
+    previewUrl: 'blob:preview-frame',
   })
   let body = ''
   server.use(
@@ -141,12 +167,32 @@ it('자동 썸네일이 서버의 썸네일 상한을 넘으면 썸네일 없이
   // 정책을 받은 뒤에 등록해야 썸네일 상한이 적용된다.
   await screen.findByText(/최대 10MB/)
 
-  await userEvent.type(screen.getByLabelText('제목'), '큰 썸네일')
+  await userEvent.type(screen.getByLabelText('제목'), title)
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
   await screen.findByAltText('썸네일 미리보기')
   await userEvent.click(screen.getByRole('button', { name: '등록' }))
 
   await waitFor(() => expect(body).toMatch(/name="video"/))
+  return body
+}
+
+it('자동 썸네일이 서버의 썸네일 상한을 넘으면 화질을 낮춰 다시 인코딩해 등록한다', async () => {
+  policyWithThumbnailLimit(100)
+  const qualities = imagesEncodingTo((quality) => (quality > 0.6 ? 500 : 50))
+
+  const body = await registerWithCapturedFrame('큰 썸네일')
+
+  expect(qualities).toEqual([0.85, 0.7, 0.5])
+  expect(body).toMatch(/name="thumbnail"; filename="thumbnail\.jpg"/)
+})
+
+it('화질을 낮춰도 서버의 썸네일 상한을 넘으면 썸네일 없이 등록한다', async () => {
+  policyWithThumbnailLimit(100)
+  const qualities = imagesEncodingTo(() => 500)
+
+  const body = await registerWithCapturedFrame('너무 큰 썸네일')
+
+  expect(qualities).toEqual([0.85, 0.7, 0.5])
   expect(body).not.toMatch(/name="thumbnail"/)
 })
 

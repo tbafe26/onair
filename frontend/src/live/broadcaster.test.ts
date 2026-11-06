@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  StartRejectedError,
   createLiveBroadcaster,
   type BroadcasterDeps,
   type SignalingChannel,
@@ -165,6 +166,20 @@ describe('송출 시작', () => {
     await first
 
     expect(env.startLive).toHaveBeenCalledTimes(1)
+  })
+
+  it('서버가 입력을 필드별로 거절하면 필드 오류를 상태에 남긴다', async () => {
+    const env = setup()
+    env.startLive.mockRejectedValueOnce(new StartRejectedError('제목 오류', { title: '제목 오류' }))
+    const { broadcaster } = await previewing(env)
+
+    await broadcaster.start({ title: '', thumbnail: null })
+
+    expect(broadcaster.state()).toMatchObject({
+      phase: 'previewing',
+      startFailure: '제목 오류',
+      startFieldErrors: { title: '제목 오류' },
+    })
   })
 
   it('방송을 만들지 못하면 미리보기로 돌아가 이유를 보여 주고 다시 시작할 수 있다', async () => {

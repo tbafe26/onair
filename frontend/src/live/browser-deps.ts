@@ -1,5 +1,11 @@
 import { decodeFailure, startLiveBroadcast } from '../api/broadcasts'
-import type { BroadcasterDeps, SignalingChannel, SignalingHandlers } from './broadcaster'
+import {
+  START_FAILURE_MESSAGE,
+  StartRejectedError,
+  type BroadcasterDeps,
+  type SignalingChannel,
+  type SignalingHandlers,
+} from './broadcaster'
 import { createBrowserPeerConnection } from './peer'
 import type { ViewerDeps } from './viewer'
 
@@ -46,9 +52,9 @@ async function startLive(input: { title: string; thumbnail: Blob | null }) {
   } catch (error) {
     const failure = decodeFailure(error)
     if (failure.kind === 'invalid') {
-      throw new Error(Object.values(failure.fieldErrors)[0], { cause: error })
+      throw new StartRejectedError(Object.values(failure.fieldErrors)[0], failure.fieldErrors)
     }
-    throw new Error('송출을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.', { cause: error })
+    throw new Error(START_FAILURE_MESSAGE, { cause: error })
   }
 }
 

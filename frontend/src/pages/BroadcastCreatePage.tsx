@@ -1,13 +1,14 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Film } from 'lucide-react'
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { decodeFailure, fetchUploadPolicy, registerBroadcast } from '../api/broadcasts'
+import { decodeFailure, registerBroadcast } from '../api/broadcasts'
 import { Button } from '../components/ui/button'
+import { useBroadcastInput } from '../hooks/useBroadcastInput'
 import { useVideoSelection } from '../hooks/useVideoSelection'
 import { formatDuration } from '../lib/format'
-import { formatLimit, thumbnailWithinLimit, validateTitle } from '../lib/upload-rules'
+import { formatLimit } from '../lib/upload-rules'
 
 const inputClass =
   'h-11 w-full rounded-xl border border-border bg-background px-4 text-foreground outline-none placeholder:text-sub focus-visible:ring-2 focus-visible:ring-ring'
@@ -28,11 +29,7 @@ export function BroadcastCreatePage() {
   // 입력란이 없는 필드(썸네일, 재생 시간)의 서버 오류
   const [otherErrors, setOtherErrors] = useState<string[]>([])
   // 서버의 업로드 정책. 받아 오기 전이나 실패했을 때는 길이·크기를 화면에서 검사하지 않고 서버에 맡긴다.
-  const { data: uploadPolicy } = useQuery({
-    queryKey: broadcastKeys.uploadPolicy(),
-    queryFn: fetchUploadPolicy,
-    retry: false,
-  })
+  const { input, uploadPolicy } = useBroadcastInput()
   const maxVideoBytes = uploadPolicy?.maxVideoBytes ?? null
   const { file, selection, select } = useVideoSelection(maxVideoBytes)
   const videoMessage = videoError ?? (selection.status === 'invalid' ? selection.reason : null)
@@ -55,7 +52,7 @@ export function BroadcastCreatePage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!canSubmit) return
-    const titleProblem = validateTitle(title, uploadPolicy?.maxTitleLength ?? null)
+    const titleProblem = input.checkTitle(title)
     setTitleError(titleProblem)
     if (!file) setVideoError('영상 파일을 선택하세요')
     if (titleProblem || !file || selection.status !== 'ready') return
@@ -63,14 +60,13 @@ export function BroadcastCreatePage() {
     setOtherErrors([])
     setProgress(0)
     try {
+      // 영상에서 뽑은 프레임도 라이브 썸네일과 같은 변환을 거친다. 줄여도 상한을 넘으면 썸네일 없이 등록한다.
+      const thumbnail = await input.prepareThumbnail(selection.metadata.thumbnail)
       const created = await registerBroadcast(
         {
           title,
           video: file,
-          thumbnail: thumbnailWithinLimit(
-            selection.metadata.thumbnail,
-            uploadPolicy?.maxThumbnailBytes ?? null,
-          ),
+          thumbnail,
           durationSeconds: selection.metadata.durationSeconds,
         },
         setProgress,
@@ -79,14 +75,11 @@ export function BroadcastCreatePage() {
       navigate(`/broadcasts/${created.id}`)
     } catch (error) {
       // 입력한 제목과 고른 파일은 그대로 두어 다시 시도할 수 있게 한다.
-      const failure = decodeFailure(error)
-      const fieldErrors: Record<string, string> = failure.kind === 'invalid' ? failure.fieldErrors : {}
-      setTitleError(fieldErrors.title ?? null)
-      setVideoError(failure.kind === 'tooLarge' ? failure.message : (fieldErrors.video ?? null))
-      setOtherErrors(
-        [fieldErrors.thumbnail, fieldErrors.durationSeconds].filter((m) => m !== undefined),
-      )
-      setUnknownFailure(failure.kind !== 'invalid' && failure.kind !== 'tooLarge')
+      const placed = input.placeFailure(decodeFailure(error))
+      setTitleError(placed.title)
+      setVideoError(placed.video)
+      setOtherErrors(placed.others)
+      setUnknownFailure(placed.unknown)
       setProgress(null)
     }
   }

@@ -26,16 +26,6 @@ export function trimWhiteSpace(value: string): string {
 }
 
 /**
- * 자동으로 만든 썸네일이 서버 상한을 넘으면 보내지 않는다. 썸네일은 선택 항목이라
- * 큰 썸네일 때문에 등록 전체가 거절되는 것보다 썸네일 없이 등록하는 편이 낫다.
- * 상한을 아직 모르면(null) 그대로 보내고 서버에 맡긴다.
- */
-export function thumbnailWithinLimit(thumbnail: Blob | null, maxThumbnailBytes: number | null): Blob | null {
-  if (thumbnail === null || maxThumbnailBytes === null) return thumbnail
-  return thumbnail.size > maxThumbnailBytes ? null : thumbnail
-}
-
-/**
  * 앞뒤 공백을 뗀 제목이 1자 이상, 서버 정책의 상한 이하인지 본다. 올바르면 null, 아니면 메시지다.
  * 정책을 아직 모르면(maxTitleLength가 null) 길이 검사는 건너뛰고 서버에 맡긴다.
  */
