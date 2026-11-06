@@ -53,13 +53,13 @@ public class Donations implements BroadcastDeletionListener {
 
     Donations(DonationRepository donations, BroadcastRepository broadcasts, AppUserRepository users,
             TossSettings toss, PaymentGateway payments, Clock clock, LiveChat chat) {
-        this.chat = chat;
         this.donations = donations;
         this.broadcasts = broadcasts;
         this.users = users;
         this.toss = toss;
         this.payments = payments;
         this.clock = clock;
+        this.chat = chat;
     }
 
     /** 대기 후원을 만든다. 로그인(401), 방송 존재(404), 입력 규칙(400), 방송 중(409), 자기 방송(403), 결제 설정(503) 순으로 확인한다. */
