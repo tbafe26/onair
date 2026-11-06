@@ -72,6 +72,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return respond(e, problem(HttpStatus.NOT_FOUND, "방송 없음", e.getMessage()), new HttpHeaders(), request);
     }
 
+    @ExceptionHandler(CommentForbiddenException.class)
+    ResponseEntity<Object> handleCommentForbidden(CommentForbiddenException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.FORBIDDEN, "권한 없음", e.getMessage()), new HttpHeaders(), request);
+    }
+
+    @ExceptionHandler(CommentNotFoundException.class)
+    ResponseEntity<Object> handleCommentNotFound(CommentNotFoundException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.NOT_FOUND, "댓글 없음", e.getMessage()), new HttpHeaders(), request);
+    }
+
     @ExceptionHandler(ThumbnailNotFoundException.class)
     ResponseEntity<Object> handleThumbnailNotFound(ThumbnailNotFoundException e, WebRequest request) {
         return respond(e, problem(HttpStatus.NOT_FOUND, "썸네일 없음", "이 방송에는 썸네일이 없습니다"), new HttpHeaders(), request);
