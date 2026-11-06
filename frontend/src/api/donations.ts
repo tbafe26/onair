@@ -1,3 +1,4 @@
+import type { InfiniteData } from '@tanstack/react-query'
 import axios from 'axios'
 import { decodeFailure } from './broadcasts'
 import { apiClient } from './client'
@@ -60,6 +61,27 @@ export interface DonationPage {
 
 export const donationKeys = {
   list: (broadcastId: number) => ['donations', broadcastId] as const,
+}
+
+/**
+ * 채팅으로 온 새 후원을 내역 조회 캐시에 반영한다. 모든 묶음의 합계를 새 합계로 바꾸고, 같은 id가 아직 없으면
+ * 첫 묶음 맨 위에 붙인다. 아직 불러오지 않았으면(캐시가 없으면) 건드리지 않는다. 처음 받아 올 때 함께 온다.
+ */
+export function applyDonationEvent(
+  data: InfiniteData<DonationPage, string | undefined> | undefined,
+  donation: ConfirmedDonation & { total: DonationPage['total'] },
+): InfiniteData<DonationPage, string | undefined> | undefined {
+  if (!data || data.pages.length === 0) return data
+  const { total, ...item } = donation
+  const known = data.pages.some((page) => page.items.some((existing) => existing.id === item.id))
+  return {
+    ...data,
+    pages: data.pages.map((page, index) => ({
+      ...page,
+      total,
+      items: index === 0 && !known ? [item, ...page.items] : page.items,
+    })),
+  }
 }
 
 export async function fetchDonations(broadcastId: number, cursor?: string): Promise<DonationPage> {
