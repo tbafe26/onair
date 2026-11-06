@@ -459,3 +459,25 @@ describe('카메라 전환 버튼', () => {
     expect(await screen.findByRole('button', { name: '카메라 전환' })).toBeDisabled()
   })
 })
+
+it('송출 중에는 후원 영역에 이 방송의 후원 합계와 내역을 보인다', async () => {
+  server.use(
+    http.get('/api/broadcasts/7/donations', () =>
+      HttpResponse.json({
+        total: { amount: 6_000, count: 2 },
+        items: [
+          { id: 2, amount: 5_000, message: '화이팅', donor: { id: 3, nickname: '후원자A' }, confirmedAt: '2026-03-15T12:30:00Z' },
+          { id: 1, amount: 1_000, message: null, donor: { id: 4, nickname: '후원자B' }, confirmedAt: '2026-03-15T12:20:00Z' },
+        ],
+        nextCursor: null,
+      }),
+    ),
+  )
+
+  await openOnAir()
+
+  const area = await screen.findByRole('region', { name: '후원' })
+  expect(await within(area).findByText('6,000원')).toBeInTheDocument()
+  expect(within(area).getByText('2건')).toBeInTheDocument()
+  expect(within(area).getByText('화이팅')).toBeInTheDocument()
+})

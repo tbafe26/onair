@@ -51,6 +51,24 @@ export interface ConfirmedDonation {
   confirmedAt: string
 }
 
+/** 방송의 후원 내역 한 묶음(최신순)과 방송 전체의 확정 합계. nextCursor가 있으면 그 값을 cursor로 넘겨 이어 받는다. */
+export interface DonationPage {
+  total: { amount: number; count: number }
+  items: ConfirmedDonation[]
+  nextCursor: string | null
+}
+
+export const donationKeys = {
+  list: (broadcastId: number) => ['donations', broadcastId] as const,
+}
+
+export async function fetchDonations(broadcastId: number, cursor?: string): Promise<DonationPage> {
+  const response = await apiClient.get<DonationPage>(`/api/broadcasts/${broadcastId}/donations`, {
+    params: { cursor },
+  })
+  return response.data
+}
+
 /** 결제창이 돌려준 값으로 서버에 승인을 요청한다. 같은 요청을 반복해도 확정된 결과가 그대로 온다. */
 export async function confirmDonation(input: {
   paymentKey: string
