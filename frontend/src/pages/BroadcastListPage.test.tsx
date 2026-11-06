@@ -42,6 +42,7 @@ it('방송 카드에 배지, 재생 시간, 제목, 등록일을 보여 주고 �
             kind: 'RECORDING',
             title: '긴 방송',
             createdAt: '2026-03-15T12:00:00Z',
+            owner: { id: 1, nickname: '방송러' },
             durationSeconds: 3723.4,
             thumbnailUrl: '/api/broadcasts/12/thumbnail',
           },
@@ -50,6 +51,7 @@ it('방송 카드에 배지, 재생 시간, 제목, 등록일을 보여 주고 �
             kind: 'RECORDING',
             title: '짧은 방송',
             createdAt: '2026-01-02T12:00:00Z',
+            owner: { id: 1, nickname: '방송러' },
             durationSeconds: 125,
             thumbnailUrl: null,
           },
@@ -58,6 +60,7 @@ it('방송 카드에 배지, 재생 시간, 제목, 등록일을 보여 주고 �
             kind: 'RECORDING',
             title: '시간 정보 없는 방송',
             createdAt: '2025-12-31T12:00:00Z',
+            owner: { id: 1, nickname: '방송러' },
             durationSeconds: null,
             thumbnailUrl: null,
           },
@@ -100,6 +103,7 @@ function useCursorServer(total: number, requests: string[] = []) {
           kind: 'RECORDING',
           title: `방송 ${id}`,
           createdAt: '2026-03-15T12:00:00Z',
+          owner: { id: 1, nickname: '방송러' },
           durationSeconds: 60,
           thumbnailUrl: null,
         })),
@@ -221,4 +225,30 @@ it('다음 묶음을 불러오다 실패하면 목록 끝에 다시 시도를 �
   await user.click(retry)
   await waitFor(() => expect(cardCount()).toBe(8))
   expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+})
+
+it('방송 카드에 소유자 닉네임을 보여 준다', async () => {
+  server.use(
+    http.get('/api/broadcasts', () =>
+      HttpResponse.json({
+        items: [
+          {
+            id: 12,
+            kind: 'RECORDING',
+            title: '닉네임 방송',
+            createdAt: '2026-03-15T12:00:00Z',
+            owner: { id: 7, nickname: '채널주인' },
+            durationSeconds: 10,
+            thumbnailUrl: null,
+          },
+        ],
+        hasNext: false,
+      }),
+    ),
+  )
+
+  renderApp('/')
+
+  const card = (await screen.findByText('닉네임 방송')).closest('a')!
+  expect(within(card).getByText('채널주인')).toBeInTheDocument()
 })

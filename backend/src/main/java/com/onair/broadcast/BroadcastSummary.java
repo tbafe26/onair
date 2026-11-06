@@ -17,6 +17,7 @@ sealed interface BroadcastSummary {
             BroadcastKind kind,
             String title,
             Instant createdAt,
+            BroadcastOwner owner,
             Double durationSeconds,
             String thumbnailUrl) implements BroadcastSummary {
     }
@@ -26,6 +27,7 @@ sealed interface BroadcastSummary {
             BroadcastKind kind,
             String title,
             Instant createdAt,
+            BroadcastOwner owner,
             String thumbnailUrl,
             LiveStatus status) implements BroadcastSummary {
     }

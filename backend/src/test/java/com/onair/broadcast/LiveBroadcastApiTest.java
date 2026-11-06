@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -26,7 +25,7 @@ class LiveBroadcastApiTest extends ApiTestSupport {
     LiveBroadcasting live;
 
     ResultActions 시작을_요청한다(String title) throws Exception {
-        return mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token()).param("title", title));
+        return mockMvc.perform(multipart("/api/broadcasts/live").with(owner().credentials()).param("title", title));
     }
 
     record Started(int id, String streamKey) {
@@ -68,7 +67,7 @@ class LiveBroadcastApiTest extends ApiTestSupport {
 
     @Test
     void JPEG가_아닌_썸네일은_thumbnail_필드_오류다() throws Exception {
-        mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token())
+        mockMvc.perform(multipart("/api/broadcasts/live").with(owner().credentials())
                         .file(new MockMultipartFile("thumbnail", "t.png", "image/png", new byte[] {1, 2, 3, 4}))
                         .param("title", "썸네일"))
                 .andExpect(status().isBadRequest())
@@ -80,7 +79,7 @@ class LiveBroadcastApiTest extends ApiTestSupport {
         byte[] big = new byte[2 * 1024 * 1024 + 1];
         System.arraycopy(JPEG_BYTES, 0, big, 0, JPEG_BYTES.length);
         for (byte[] bad : new byte[][] {"not a jpeg".getBytes(), big}) {
-            mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token())
+            mockMvc.perform(multipart("/api/broadcasts/live").with(owner().credentials())
                             .file(new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", bad))
                             .param("title", "썸네일"))
                     .andExpect(status().isBadRequest())
@@ -92,7 +91,7 @@ class LiveBroadcastApiTest extends ApiTestSupport {
 
     @Test
     void 썸네일을_보내면_요약과_상세에_썸네일_주소가_있고_내려받을_수_있다() throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token())
+        String body = mockMvc.perform(multipart("/api/broadcasts/live").with(owner().credentials())
                         .file(new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", JPEG_BYTES))
                         .param("title", "썸네일 있음"))
                 .andExpect(status().isCreated())
@@ -156,7 +155,7 @@ class LiveBroadcastApiTest extends ApiTestSupport {
 
     @Test
     void 라이브_목록은_시작_시각_최신순이고_종료된_방송도_포함하며_녹화방송은_섞이지_않는다() throws Exception {
-        mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile("video", "v.mp4", "video/mp4", BroadcastPagingApiTest.MP4_BYTES))
                         .param("title", "녹화"))
                 .andExpect(status().isCreated());

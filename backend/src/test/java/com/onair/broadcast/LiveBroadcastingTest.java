@@ -3,6 +3,7 @@ package com.onair.broadcast;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.onair.auth.AppUserRepository;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,18 +25,36 @@ class LiveBroadcastingTest extends ApiTestSupport {
     RegistrationRules rules;
 
     @Autowired
+    AppUserRepository users;
+
+    @Autowired
     PlatformTransactionManager transactionManager;
 
     LiveBroadcasting 상한이_있는_모듈(int maxViewers) {
-        return new LiveBroadcasting(repository, storage, rules, transactionManager, clock, maxViewers);
+        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, maxViewers);
     }
 
     StartedLive 시작한다(String title) {
-        return live.start(new StartLiveCommand(title, null));
+        return live.start(new StartLiveCommand(title, null), owner().userId());
     }
 
     LiveBroadcast 저장된_방송(StartedLive started) {
         return repository.findLiveById(started.broadcastId()).orElseThrow();
+    }
+
+    @Test
+    void 로그인하지_않은_시작은_거절되고_저장하지_않는다() {
+        assertThatThrownBy(() -> live.start(new StartLiveCommand("몰래", null), null))
+                .isInstanceOf(AuthenticationRequiredException.class);
+
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void 시작한_사용자가_소유자로_저장된다() {
+        StartedLive started = 시작한다("내 방송");
+
+        assertThat(저장된_방송(started).getOwner().getId()).isEqualTo(owner().userId());
     }
 
     @Test
@@ -412,7 +431,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
     @Test
     void 설정한_상한이_적용된다() {
         LiveBroadcasting limited = 상한이_있는_모듈(2);
-        StartedLive started = limited.start(new StartLiveCommand("상한 설정", null));
+        StartedLive started = limited.start(new StartLiveCommand("상한 설정", null), owner().userId());
         RecordingPeer broadcaster = new RecordingPeer();
         limited.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
 

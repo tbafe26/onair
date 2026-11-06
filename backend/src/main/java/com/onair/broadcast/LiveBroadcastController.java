@@ -1,8 +1,10 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AuthenticatedUser;
 import java.net.URI;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -24,8 +26,9 @@ class LiveBroadcastController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ResponseEntity<StartedLiveResponse> start(
             @RequestParam(required = false) String title,
-            @RequestParam(required = false) MultipartFile thumbnail) {
-        StartedLive started = live.start(new StartLiveCommand(title, thumbnail));
+            @RequestParam(required = false) MultipartFile thumbnail,
+            @AuthenticationPrincipal AuthenticatedUser user) {
+        StartedLive started = live.start(new StartLiveCommand(title, thumbnail), user == null ? null : user.id());
         return ResponseEntity
                 .created(URI.create(BroadcastResponses.location(started.broadcastId())))
                 .body(new StartedLiveResponse(started.broadcastId(), started.streamKey()));

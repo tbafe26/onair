@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
 import { extractVideoMetadata, releasePreview } from '../lib/video-metadata'
+import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
@@ -53,10 +54,18 @@ function uploadPolicyHandler(maxVideoBytes: number) {
 }
 
 beforeEach(() => {
+  signedInAs()
   mockedExtract.mockReset()
   imagesEncodingTo(() => 10)
   server.use(uploadPolicyHandler(10 * MB))
 })
+
+/** 로그인 상태가 정해져 등록 화면이 그려질 때까지 기다린다. */
+async function openCreatePage() {
+  const app = renderApp('/broadcasts/new')
+  await screen.findByLabelText('제목')
+  return app
+}
 
 it('파일을 고르면 썸네일 미리보기와 재생 시간을 보여 준다', async () => {
   mockedExtract.mockResolvedValue({
@@ -64,7 +73,7 @@ it('파일을 고르면 썸네일 미리보기와 재생 시간을 보여 준다
     thumbnail: new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }),
     previewUrl: 'blob:preview-1',
   })
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
 
@@ -75,7 +84,7 @@ it('파일을 고르면 썸네일 미리보기와 재생 시간을 보여 준다
 it('브라우저가 열 수 없는 영상이면 안내하고 등록을 막는다', async () => {
   const { VideoUnreadableError } = await import('../lib/video-metadata')
   mockedExtract.mockRejectedValue(new VideoUnreadableError())
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.type(screen.getByLabelText('제목'), '깨진 영상')
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
@@ -101,6 +110,7 @@ it('등록에 성공하면 방금 만든 방송의 상세 화면으로 이동한
           kind: 'RECORDING',
           title: '새 방송',
           createdAt: '2026-03-15T12:00:00Z',
+          owner: { id: 1, nickname: '방송러' },
           video: {
             url: '/api/broadcasts/42/video',
             contentType: 'video/mp4',
@@ -118,6 +128,7 @@ it('등록에 성공하면 방금 만든 방송의 상세 화면으로 이동한
         kind: 'RECORDING',
         title: '새 방송',
         createdAt: '2026-03-15T12:00:00Z',
+        owner: { id: 1, nickname: '방송러' },
         video: {
           url: '/api/broadcasts/42/video',
           contentType: 'video/mp4',
@@ -128,7 +139,7 @@ it('등록에 성공하면 방금 만든 방송의 상세 화면으로 이동한
       }),
     ),
   )
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.type(screen.getByLabelText('제목'), '새 방송')
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
@@ -163,7 +174,7 @@ async function registerWithCapturedFrame(title: string) {
       return new HttpResponse(null, { status: 500 })
     }),
   )
-  renderApp('/broadcasts/new')
+  await openCreatePage()
   // 정책을 받은 뒤에 등록해야 썸네일 상한이 적용된다.
   await screen.findByText(/최대 10MB/)
 
@@ -204,7 +215,7 @@ const readyInfo = () => ({
 
 it('제목을 비우고 등록하면 요청 없이 제목 입력란 옆에 메시지를 보여 준다', async () => {
   mockedExtract.mockResolvedValue(readyInfo())
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
   await screen.findByAltText('썸네일 미리보기')
@@ -217,7 +228,7 @@ it('제목을 비우고 등록하면 요청 없이 제목 입력란 옆에 메�
 
 it('제목이 100자를 넘으면 메시지를 보여 준다', async () => {
   mockedExtract.mockResolvedValue(readyInfo())
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
   await screen.findByAltText('썸네일 미리보기')
@@ -229,7 +240,7 @@ it('제목이 100자를 넘으면 메시지를 보여 준다', async () => {
 })
 
 it('mp4나 webm이 아닌 파일은 영상 입력란 옆에 이유를 보여 주고 읽지 않는다', async () => {
-  renderApp('/broadcasts/new')
+  await openCreatePage()
   const fake = new File(['이건 영상이 아닙니다'], 'fake.mp4', { type: 'video/mp4' })
 
   await userEvent.upload(screen.getByLabelText('영상 파일'), fake)
@@ -243,13 +254,13 @@ it('mp4나 webm이 아닌 파일은 영상 입력란 옆에 이유를 보여 주
 })
 
 it('서버가 알려 준 크기 상한을 안내 문구에 보여 준다', async () => {
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   expect(await screen.findByText('mp4 또는 webm 파일을 고르세요. (최대 10MB)')).toBeInTheDocument()
 })
 
 it('서버가 알려 준 크기 상한을 넘는 파일은 상한과 함께 거절한다', async () => {
-  renderApp('/broadcasts/new')
+  await openCreatePage()
   await screen.findByText('mp4 또는 webm 파일을 고르세요. (최대 10MB)')
   const big = videoFile()
   Object.defineProperty(big, 'size', { value: 10 * MB + 1 })
@@ -263,7 +274,7 @@ it('서버가 알려 준 크기 상한을 넘는 파일은 상한과 함께 거�
 it('업로드 정책을 받지 못하면 화면에서 크기를 검사하지 않고 서버에 맡긴다', async () => {
   server.use(http.get('/api/broadcasts/upload-policy', () => new HttpResponse(null, { status: 500 })))
   mockedExtract.mockResolvedValue(readyInfo())
-  renderApp('/broadcasts/new')
+  await openCreatePage()
   const big = videoFile()
   Object.defineProperty(big, 'size', { value: 500 * MB })
 
@@ -291,7 +302,7 @@ it('서버가 돌려준 필드 오류를 해당 입력란에 보여 주고 제�
       ),
     ),
   )
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.type(screen.getByLabelText('제목'), '유지될 제목')
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
@@ -319,7 +330,7 @@ it('서버가 413으로 거절하면 상한 값을 영상 입력란 옆에 보�
       ),
     ),
   )
-  renderApp('/broadcasts/new')
+  await openCreatePage()
 
   await userEvent.type(screen.getByLabelText('제목'), '큰 영상')
   await userEvent.upload(screen.getByLabelText('영상 파일'), videoFile())
@@ -342,7 +353,7 @@ it('정책보다 먼저 고른 큰 파일은 정책을 받은 뒤 크기 오류�
     }),
   )
   mockedExtract.mockResolvedValue(readyInfo())
-  renderApp('/broadcasts/new')
+  await openCreatePage()
   const big = videoFile()
   Object.defineProperty(big, 'size', { value: 500 * MB })
 
@@ -366,7 +377,7 @@ it('첫 파일을 읽는 중에 두 번째 파일을 고르면 두 번째 파일
       }),
   )
   mockedExtract.mockResolvedValueOnce({ ...readyInfo(), durationSeconds: 61, previewUrl: 'blob:second' })
-  renderApp('/broadcasts/new')
+  await openCreatePage()
   const input = screen.getByLabelText('영상 파일')
 
   await userEvent.upload(input, videoFile())

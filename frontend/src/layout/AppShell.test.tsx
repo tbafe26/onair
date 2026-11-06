@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
@@ -55,6 +56,7 @@ it('헤더에 로고 링크와 녹화방송 등록·라이브 송출 버튼이, 
 })
 
 it('사이드바에 전체 방송과 방송 등록 메뉴가 있고 현재 주소의 메뉴만 강조된다', async () => {
+  signedInAs()
   renderApp('/')
 
   expect(within(sidebar()).getByRole('link', { name: '전체 방송' })).toHaveAttribute(
@@ -208,6 +210,7 @@ describe('휴대폰 폭(768px 미만)', () => {
   })
 
   it('메뉴를 고르면 그 화면으로 가고 사이드바가 닫힌다', async () => {
+    signedInAs()
     const { router } = renderApp('/')
 
     await userEvent.click(hamburger())

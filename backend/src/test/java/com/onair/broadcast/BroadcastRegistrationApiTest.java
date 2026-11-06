@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
@@ -25,7 +24,7 @@ class BroadcastRegistrationApiTest extends ApiTestSupport {
             (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 9, 8, 7, 6, 5};
 
     MockMultipartHttpServletRequestBuilder 등록_요청(String title) {
-        return multipart("/api/broadcasts").with(Csrf.token())
+        return multipart("/api/broadcasts").with(owner().credentials())
                 .file(new MockMultipartFile("video", "내 영상 파일.mp4", "video/mp4", MP4_BYTES))
                 .param("title", title);
     }

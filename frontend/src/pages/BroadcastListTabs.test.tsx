@@ -11,6 +11,7 @@ function recording(id: number) {
     kind: 'RECORDING',
     title: `녹화 ${id}`,
     createdAt: '2026-03-15T12:00:00Z',
+    owner: { id: 1, nickname: '방송러' },
     durationSeconds: 60,
     thumbnailUrl: null,
   }

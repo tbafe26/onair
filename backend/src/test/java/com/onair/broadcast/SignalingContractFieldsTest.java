@@ -58,7 +58,7 @@ class SignalingContractFieldsTest extends ApiTestSupport {
 
     @Test
     void 서버가_송출자와_시청자에게_보낸_메시지의_필드는_계약과_같고_계약의_모든_항목이_한_번_이상_나간다() {
-        StartedLive started = live.start(new StartLiveCommand("계약 필드", null));
+        StartedLive started = live.start(new StartLiveCommand("계약 필드", null), owner().userId());
         long id = started.broadcastId();
         RecordingPeer broadcaster = new RecordingPeer();
         RecordingPeer viewer = new RecordingPeer();
@@ -121,7 +121,7 @@ class SignalingContractFieldsTest extends ApiTestSupport {
 
     @Test
     void 계약대로_만든_클라이언트_메시지는_서버가_처리해_상대에게_전달한다() {
-        StartedLive started = live.start(new StartLiveCommand("계약 입력", null));
+        StartedLive started = live.start(new StartLiveCommand("계약 입력", null), owner().userId());
         long id = started.broadcastId();
         RecordingPeer broadcaster = new RecordingPeer();
         RecordingPeer viewer = new RecordingPeer();

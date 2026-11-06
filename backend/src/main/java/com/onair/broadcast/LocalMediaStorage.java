@@ -41,6 +41,15 @@ class LocalMediaStorage implements MediaStorage {
         return Files.isRegularFile(path) ? Optional.of(new FileSystemResource(path)) : Optional.empty();
     }
 
+    @Override
+    public void delete(String key) {
+        try {
+            Files.deleteIfExists(resolve(key));
+        } catch (IOException e) {
+            throw new UncheckedIOException("파일을 지우지 못했습니다: " + key, e);
+        }
+    }
+
     private final class LocalBatch implements Batch {
 
         private final List<String> keys = new ArrayList<>();

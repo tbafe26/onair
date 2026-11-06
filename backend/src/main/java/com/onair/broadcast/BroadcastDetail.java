@@ -16,6 +16,7 @@ sealed interface BroadcastDetail {
             BroadcastKind kind,
             String title,
             Instant createdAt,
+            BroadcastOwner owner,
             VideoInfo video) implements BroadcastDetail {
     }
 
@@ -32,6 +33,7 @@ sealed interface BroadcastDetail {
             BroadcastKind kind,
             String title,
             Instant createdAt,
+            BroadcastOwner owner,
             String thumbnailUrl,
             LiveStatus status,
             Instant endedAt) implements BroadcastDetail {

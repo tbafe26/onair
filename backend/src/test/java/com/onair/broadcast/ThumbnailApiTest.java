@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -20,7 +19,7 @@ class ThumbnailApiTest extends ApiTestSupport {
 
     @Test
     void 저장된_썸네일_파일이_사라지면_404_ProblemDetail이다() throws Exception {
-        String location = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        String location = mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
                         .file(new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", JPEG_BYTES))
                         .param("title", "썸네일 삭제"))
@@ -49,7 +48,7 @@ class ThumbnailApiTest extends ApiTestSupport {
 
     @Test
     void 썸네일_없는_방송의_썸네일_요청은_썸네일_없음_404이고_없는_방송은_방송_없음_404이다() throws Exception {
-        String location = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        String location = mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
                         .param("title", "썸네일 없는 방송"))
                 .andExpect(status().isCreated())

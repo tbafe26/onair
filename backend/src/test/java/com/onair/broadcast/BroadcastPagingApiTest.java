@@ -6,7 +6,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
 import com.jayway.jsonpath.JsonPath;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +19,7 @@ class BroadcastPagingApiTest extends ApiTestSupport {
             0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0, 1, 2, 3, 4, 5, 6, 7, 8};
 
     int 등록한다(String title) throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        String body = mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile("video", "v.mp4", "video/mp4", MP4_BYTES))
                         .param("title", title))
                 .andExpect(status().isCreated())

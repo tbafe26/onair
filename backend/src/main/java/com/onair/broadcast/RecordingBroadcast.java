@@ -1,5 +1,6 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AppUser;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -20,8 +21,8 @@ public class RecordingBroadcast extends Broadcast {
     protected RecordingBroadcast() {
     }
 
-    public RecordingBroadcast(String title, Video video, Instant createdAt) {
-        super(title, createdAt);
+    public RecordingBroadcast(String title, Video video, Instant createdAt, AppUser owner) {
+        super(title, createdAt, owner);
         this.video = video;
     }
 

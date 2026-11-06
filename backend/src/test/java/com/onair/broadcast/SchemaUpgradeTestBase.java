@@ -1,19 +1,25 @@
 package com.onair.broadcast;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.onair.auth.Csrf;
+import com.onair.auth.AuthClient;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.test.context.DynamicPropertyRegistry;
 
 /**
@@ -50,11 +56,11 @@ abstract class SchemaUpgradeTestBase extends ApiTestSupport {
 
     @Test
     void 업그레이드한_DB에서_녹화방송과_라이브방송을_저장하고_읽을_수_있다() throws Exception {
-        mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
+        mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
                         .param("title", "업그레이드 녹화"))
                 .andExpect(status().isCreated());
-        mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token()).param("title", "업그레이드 라이브"))
+        mockMvc.perform(multipart("/api/broadcasts/live").with(owner().credentials()).param("title", "업그레이드 라이브"))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/broadcasts"))
@@ -62,5 +68,107 @@ abstract class SchemaUpgradeTestBase extends ApiTestSupport {
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[?(@.kind == 'LIVE')].title").value("업그레이드 라이브"))
                 .andExpect(jsonPath("$.items[?(@.kind == 'RECORDING')].title").value("업그레이드 녹화"));
+    }
+
+    @Autowired
+    OwnerlessBroadcastCleanup cleanup;
+
+    @Autowired
+    MediaStorage storage;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
+
+    /** 소유자 컬럼이 생기기 전에 올라온 방송을 흉내 낸다. 파일을 만들지 않으면 이미 사라진 파일이다. */
+    void 소유자_없는_녹화방송을_넣는다(long id, String key, boolean withFiles) throws IOException {
+        jdbc.update("insert into video (id, storage_key, original_filename, content_type, size_bytes, thumbnail_key) "
+                + "values (?, ?, 'old.mp4', 'video/mp4', 24, ?)", id, key + "-video", key + "-thumb");
+        jdbc.update("insert into broadcast (id, kind, title, created_at) values (?, 'RECORDING', '옛 녹화', ?)",
+                id, OffsetDateTime.now());
+        jdbc.update("insert into recording_broadcast (id, video_id) values (?, ?)", id, id);
+        if (withFiles) {
+            Files.write(storageDir.resolve(key + "-video"), MP4_BYTES);
+            Files.write(storageDir.resolve(key + "-thumb"), new byte[] {1, 2});
+        }
+    }
+
+    void 소유자_없는_라이브방송을_넣는다(long id, String key) throws IOException {
+        jdbc.update("insert into broadcast (id, kind, title, created_at) values (?, 'LIVE', '옛 라이브', ?)",
+                id, OffsetDateTime.now());
+        jdbc.update("insert into live_broadcast (id, status, stream_key_hash, thumbnail_key) "
+                + "values (?, 'ENDED', 'hash', ?)", id, key + "-thumb");
+        Files.write(storageDir.resolve(key + "-thumb"), new byte[] {1, 2});
+    }
+
+    @Test
+    void 소유자_없는_방송과_영상_행과_파일은_지워지고_소유자_있는_방송은_남는다() throws Exception {
+        owner();
+        mockMvc.perform(multipart("/api/broadcasts").with(owner().credentials())
+                        .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
+                        .param("title", "내 녹화"))
+                .andExpect(status().isCreated());
+        소유자_없는_녹화방송을_넣는다(9001, "old-rec", true);
+        소유자_없는_라이브방송을_넣는다(9002, "old-live");
+        소유자_없는_녹화방송을_넣는다(9003, "old-gone", false);
+
+        cleanup.cleanUp();
+
+        assertThat(jdbc.queryForList("select title from broadcast", String.class)).containsExactly("내 녹화");
+        assertThat(jdbc.queryForObject("select count(*) from video", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from live_broadcast", Integer.class)).isZero();
+        assertThat(Files.exists(storageDir.resolve("old-rec-video"))).isFalse();
+        assertThat(Files.exists(storageDir.resolve("old-rec-thumb"))).isFalse();
+        assertThat(Files.exists(storageDir.resolve("old-live-thumb"))).isFalse();
+        try (var files = Files.list(storageDir)) {
+            assertThat(files.count()).as("소유자 있는 방송의 파일은 남는다").isEqualTo(1);
+        }
+    }
+
+    @Test
+    void 두_번째_실행은_할_일이_없다() throws Exception {
+        소유자_없는_녹화방송을_넣는다(9001, "old-rec", true);
+
+        assertThat(cleanup.cleanUp()).isEqualTo(1);
+        assertThat(cleanup.cleanUp()).isZero();
+    }
+
+    @Test
+    void 파일_삭제가_실패해도_행은_지워지고_멈추지_않는다() throws Exception {
+        소유자_없는_녹화방송을_넣는다(9001, "old-rec", true);
+        MediaStorage failing = new MediaStorage() {
+            @Override
+            public Batch begin() {
+                return storage.begin();
+            }
+
+            @Override
+            public Optional<org.springframework.core.io.Resource> open(String key) {
+                return storage.open(key);
+            }
+
+            @Override
+            public void delete(String key) {
+                throw new java.io.UncheckedIOException(new IOException("삭제 실패"));
+            }
+        };
+
+        new OwnerlessBroadcastCleanup(jdbc, failing, transactionManager).cleanUp();
+
+        assertThat(jdbc.queryForObject("select count(*) from broadcast", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from video", Integer.class)).isZero();
+    }
+
+    @Test
+    void 업그레이드한_DB에서_새_가입과_등록이_된다() throws Exception {
+        소유자_없는_녹화방송을_넣는다(9001, "old-rec", true);
+        cleanup.cleanUp();
+
+        AuthClient fresh = AuthClient.signedUp(mockMvc, "newuser1", "새내기");
+        mockMvc.perform(multipart("/api/broadcasts/live").with(fresh.credentials()).param("title", "새 라이브"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/broadcasts"))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].owner.nickname").value("새내기"));
     }
 }

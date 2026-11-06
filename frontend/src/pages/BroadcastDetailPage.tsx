@@ -64,7 +64,8 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
           <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
             {data.title}
           </h1>
-          <p className="mt-2 text-sub">
+          <p className="mt-2 font-semibold text-foreground">{data.owner.nickname}</p>
+          <p className="mt-1 text-sub">
             <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
           </p>
         </div>
@@ -91,7 +92,8 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
           <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
             {data.title}
           </h1>
-          <p className="mt-2 text-sub">
+          <p className="mt-2 font-semibold text-foreground">{data.owner.nickname}</p>
+          <p className="mt-1 text-sub">
             시작 <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
           </p>
           {data.endedAt && (
