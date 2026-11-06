@@ -11,6 +11,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfAuthenticationStrategy;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,11 +29,14 @@ class AuthController {
     private final Accounts accounts;
     private final SecurityContextRepository contexts;
     private final ChangeSessionIdAuthenticationStrategy sessionIds = new ChangeSessionIdAuthenticationStrategy();
+    private final CsrfAuthenticationStrategy csrfTokens;
     private final SecurityContextLogoutHandler logoutHandler = new SecurityContextLogoutHandler();
 
-    AuthController(Accounts accounts, SecurityContextRepository contexts) {
+    AuthController(Accounts accounts, SecurityContextRepository contexts, CsrfTokenRepository csrfTokenRepository) {
         this.accounts = accounts;
         this.contexts = contexts;
+        this.csrfTokens = new CsrfAuthenticationStrategy(csrfTokenRepository);
+        this.csrfTokens.setRequestHandler(new CsrfTokenRequestAttributeHandler());
     }
 
     record SignupRequest(String loginId, String password, String nickname) {
@@ -74,9 +81,14 @@ class AuthController {
         return user.info();
     }
 
-    // 로그인하면 세션 id를 새로 발급해 세션 고정을 막고, 인증 정보를 세션에 저장한다.
+    // 로그인하면 세션 id와 CSRF 토큰을 새로 발급해 세션 고정을 막고, 인증 정보를 세션에 저장한다.
     private void startSession(Authentication authentication, HttpServletRequest request, HttpServletResponse response) {
         sessionIds.onAuthentication(authentication, request, response);
+        csrfTokens.onAuthentication(authentication, request, response);
+        // 새 토큰은 처음 읽을 때 만들어져 쿠키로 나간다. 지금 읽어 이 응답에 싣는다.
+        if (request.getAttribute(CsrfToken.class.getName()) instanceof CsrfToken token) {
+            token.getToken();
+        }
         SecurityContext context = SecurityContextHolder.getContextHolderStrategy().createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.getContextHolderStrategy().setContext(context);

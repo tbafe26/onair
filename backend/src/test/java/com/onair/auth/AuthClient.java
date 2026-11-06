@@ -70,6 +70,11 @@ public final class AuthClient {
         return userId;
     }
 
+    /** 마지막으로 받은 CSRF 토큰 쿠키 값. */
+    public String csrfToken() {
+        return csrf;
+    }
+
     public String sessionId() {
         return session.getId();
     }
@@ -105,7 +110,13 @@ public final class AuthClient {
     }
 
     private ResultActions remember(ResultActions result) {
-        Cookie cookie = result.andReturn().getResponse().getCookie(Csrf.COOKIE);
+        // 같은 응답에 토큰 쿠키가 여러 번 실리면 브라우저처럼 마지막 것이 이긴다.
+        Cookie cookie = null;
+        for (Cookie candidate : result.andReturn().getResponse().getCookies()) {
+            if (Csrf.COOKIE.equals(candidate.getName())) {
+                cookie = candidate;
+            }
+        }
         if (cookie != null && cookie.getMaxAge() != 0) {
             csrf = cookie.getValue();
         }
