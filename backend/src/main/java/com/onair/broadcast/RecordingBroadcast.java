@@ -14,7 +14,7 @@ import java.time.Instant;
 @DiscriminatorValue("RECORDING")
 public class RecordingBroadcast extends Broadcast {
 
-    @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.PERSIST, optional = false)
+    @OneToOne(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.REMOVE}, optional = false)
     @JoinColumn(name = "video_id", nullable = false)
     private Video video;
 

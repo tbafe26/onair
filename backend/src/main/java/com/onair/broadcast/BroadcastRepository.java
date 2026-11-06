@@ -22,6 +22,10 @@ interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
     @Query("select l from LiveBroadcast l where l.id < :before order by l.id desc")
     List<Broadcast> findLiveBefore(@Param("before") long before, Pageable pageable);
 
+    /** findBefore와 같되 소유자가 ownerId인 방송만 돌려준다. */
+    @Query("select b from Broadcast b where b.owner.id = :ownerId and b.id < :before order by b.id desc")
+    List<Broadcast> findOwnedBefore(@Param("ownerId") long ownerId, @Param("before") long before, Pageable pageable);
+
     @Query("select l from LiveBroadcast l where l.id = :id")
     Optional<LiveBroadcast> findLiveById(@Param("id") long id);
 

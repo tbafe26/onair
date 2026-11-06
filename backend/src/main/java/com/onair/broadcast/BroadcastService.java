@@ -3,15 +3,23 @@ package com.onair.broadcast;
 import com.onair.auth.AppUser;
 import com.onair.auth.AppUserRepository;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 방송 등록과 조회의 흐름만 맡는다. 등록 규칙은 RegistrationRules, 파일 보관은 MediaStorage가 맡는다. */
 @Service
 class BroadcastService {
+
+    private static final Logger log = LoggerFactory.getLogger(BroadcastService.class);
 
     static final int DEFAULT_PAGE_SIZE = 20;
     static final int MAX_PAGE_SIZE = 50;
@@ -21,9 +29,11 @@ class BroadcastService {
     private final RegistrationRules rules;
     private final AppUserRepository users;
     private final Clock clock = Clock.systemUTC();
+    private final TransactionTemplate transaction;
 
     BroadcastService(BroadcastRepository repository, MediaStorage storage, RegistrationRules rules,
-            AppUserRepository users) {
+            AppUserRepository users, PlatformTransactionManager transactionManager) {
+        this.transaction = new TransactionTemplate(transactionManager);
         this.users = users;
         this.repository = repository;
         this.storage = storage;
@@ -65,6 +75,56 @@ class BroadcastService {
         return users.findById(userId).orElseThrow(AuthenticationRequiredException::new);
     }
 
+    /**
+     * 제목을 고친다. 로그인(401), 방송 존재(404), 소유자(403), 제목 규칙(400) 순으로 확인하고 고친 상세를 돌려준다.
+     * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
+     */
+    @Transactional
+    BroadcastDetail rename(long id, Long userId, String rawTitle) {
+        Broadcast broadcast = findOwned(id, userId);
+        broadcast.rename(rules.validateTitle(rawTitle));
+        return BroadcastResponses.detail(broadcast);
+    }
+
+    /**
+     * 방송을 지운다. 확인 순서는 제목 수정과 같고, 방송 중인 라이브방송이면 409다.
+     * 녹화방송은 영상 행도 함께 지우고, 저장된 영상·썸네일 파일은 DB 삭제가 확정된 뒤에 지운다.
+     * 파일이 이미 없어도 성공으로 보고, 지우지 못한 파일은 방송이 이미 사라졌으므로 로그만 남긴다.
+     */
+    void delete(long id, Long userId) {
+        List<String> keys = transaction.execute(status -> {
+            Broadcast broadcast = findOwned(id, userId);
+            if (broadcast instanceof LiveBroadcast live && live.isOnAir()) {
+                throw new LiveOnAirException(id);
+            }
+            List<String> fileKeys = new ArrayList<>();
+            if (broadcast instanceof RecordingBroadcast recording) {
+                fileKeys.add(recording.videoStorageKey());
+            }
+            if (broadcast.thumbnailKey() != null) {
+                fileKeys.add(broadcast.thumbnailKey());
+            }
+            repository.delete(broadcast);
+            return fileKeys;
+        });
+        for (String key : keys) {
+            try {
+                storage.delete(key);
+            } catch (RuntimeException e) {
+                log.warn("방송은 지웠지만 파일을 지우지 못했습니다: {}", key, e);
+            }
+        }
+    }
+
+    private Broadcast findOwned(long id, Long userId) {
+        long requester = requireUserId(userId);
+        Broadcast broadcast = repository.findById(id).orElseThrow(() -> new BroadcastNotFoundException(id));
+        if (!broadcast.isOwnedBy(requester)) {
+            throw new BroadcastForbiddenException(id);
+        }
+        return broadcast;
+    }
+
     /** 업로드 정책(크기 상한, 제목 길이). 화면이 서버와 같은 값으로 미리 검사하도록 알려 준다. */
     UploadPolicy uploadPolicy() {
         return rules.policy();
@@ -74,23 +134,40 @@ class BroadcastService {
     @Transactional(readOnly = true)
     BroadcastPage list(Long before, Integer requestedSize, String requestedKind) {
         BroadcastKind kind = parseKind(requestedKind);
+        return page(requestedSize, before, window -> switch (kind) {
+            case null -> repository.findBefore(before == null ? Long.MAX_VALUE : before, window);
+            case RECORDING -> repository.findRecordingsBefore(before == null ? Long.MAX_VALUE : before, window);
+            case LIVE -> repository.findLiveBefore(before == null ? Long.MAX_VALUE : before, window);
+        });
+    }
+
+    /** 내 방송 한 묶음. 목록과 같은 커서·크기 규칙이고, 로그인하지 않았으면(userId가 null) 401 예외다. */
+    @Transactional(readOnly = true)
+    BroadcastPage listMine(Long userId, Long before, Integer requestedSize) {
+        long ownerId = requireUserId(userId);
+        return page(requestedSize, before, window -> repository.findOwnedBefore(
+                ownerId, before == null ? Long.MAX_VALUE : before, window));
+    }
+
+    private BroadcastPage page(Integer requestedSize, Long before, Function<PageRequest, List<Broadcast>> finder) {
         int size = requestedSize == null ? DEFAULT_PAGE_SIZE : requestedSize;
         if (size < 1) {
             throw new InvalidRequestException(List.of(new FieldViolation(
                     "size", "size는 1 이상이어야 합니다")));
         }
         size = Math.min(size, MAX_PAGE_SIZE);
-        long cursor = before == null ? Long.MAX_VALUE : before;
         // 한 건 더 읽어 다음 묶음이 있는지 판단한다.
-        PageRequest window = PageRequest.of(0, size + 1);
-        List<Broadcast> found = switch (kind) {
-            case null -> repository.findBefore(cursor, window);
-            case RECORDING -> repository.findRecordingsBefore(cursor, window);
-            case LIVE -> repository.findLiveBefore(cursor, window);
-        };
+        List<Broadcast> found = finder.apply(PageRequest.of(0, size + 1));
         boolean hasNext = found.size() > size;
         List<BroadcastSummary> items = found.stream().limit(size).map(BroadcastResponses::summary).toList();
         return new BroadcastPage(items, hasNext);
+    }
+
+    private static long requireUserId(Long userId) {
+        if (userId == null) {
+            throw new AuthenticationRequiredException();
+        }
+        return userId;
     }
 
     private static BroadcastKind parseKind(String value) {
