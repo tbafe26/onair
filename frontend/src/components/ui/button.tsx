@@ -12,6 +12,8 @@ const buttonVariants = cva(
         default: 'rounded-full bg-primary text-primary-foreground hover:bg-primary/90',
         outline:
           'rounded-full border border-border bg-transparent text-foreground hover:bg-accent',
+        // 되돌릴 수 없는 행동(송출 종료 등)
+        destructive: 'rounded-full bg-destructive text-black hover:bg-destructive/90',
         // 아이콘만 있는 원형 버튼
         ghost: 'rounded-full bg-transparent text-foreground hover:bg-accent',
       },

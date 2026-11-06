@@ -11,7 +11,7 @@ it('방송이 없으면 빈 목록 안내와 등록 화면으로 가는 버튼�
     http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
   )
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
 
   expect(await screen.findByText('등록된 방송이 없습니다')).toBeInTheDocument()
   expect(
@@ -24,7 +24,7 @@ it('빈 목록의 등록 화면 이동은 민트 알약 버튼 모양이다', as
     http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
   )
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
 
   await screen.findByText('등록된 방송이 없습니다')
   const link = within(screen.getByRole('main')).getByRole('link', { name: '방송 등록' })
@@ -67,7 +67,7 @@ it('방송 카드에 배지, 재생 시간, 제목, 등록일을 보여 주고 �
     ),
   )
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
 
   const longCard = (await screen.findByRole('link', { name: /긴 방송/ })) as HTMLElement
   expect(longCard).toHaveAttribute('href', '/broadcasts/12')
@@ -117,7 +117,7 @@ it('목록 끝에 닿으면 마지막 방송 id를 before로 다음 묶음을 �
   const requests: string[] = []
   useCursorServer(12, requests)
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
   await screen.findByRole('link', { name: /방송 12/ })
   expect(cardCount()).toBe(5)
 
@@ -140,7 +140,7 @@ it('불러오는 동안 목록 끝에 로딩 표시를 보여 준다', async () 
   )
   // 위 핸들러는 before가 있을 때만 지연시키고, 없으면 다음 핸들러(useCursorServer)로 넘긴다.
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
   await screen.findByRole('link', { name: /방송 12/ })
 
   revealObservedElements()
@@ -156,7 +156,7 @@ it('마지막 묶음 뒤에는 감시와 추가 요청이 없다', async () => {
   const requests: string[] = []
   useCursorServer(7, requests)
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
   await screen.findByRole('link', { name: /방송 7(?!\d)/ })
   revealObservedElements()
   await waitFor(() => expect(cardCount()).toBe(7))
@@ -171,7 +171,7 @@ it('마지막 묶음 뒤에는 감시와 추가 요청이 없다', async () => {
 it('첫 로딩 중에는 카드 모양 스켈레톤을 보여 준다', async () => {
   server.use(http.get('/api/broadcasts', () => new Promise(() => {})))
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
 
   expect(await screen.findByLabelText('방송 목록을 불러오는 중')).toBeInTheDocument()
   expect(screen.getAllByTestId('broadcast-card-skeleton').length).toBeGreaterThan(0)
@@ -188,7 +188,7 @@ it('첫 목록을 불러오지 못하면 오류 안내를 보이고 다시 시�
   )
   const user = userEvent.setup()
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
   expect(await screen.findByText('방송 목록을 불러오지 못했습니다.')).toBeInTheDocument()
   expect(screen.queryByText('등록된 방송이 없습니다')).not.toBeInTheDocument()
 
@@ -209,7 +209,7 @@ it('다음 묶음을 불러오다 실패하면 목록 끝에 다시 시도를 �
   )
   const user = userEvent.setup()
 
-  renderApp('/')
+  renderApp('/?kind=RECORDING')
   await screen.findByRole('link', { name: /방송 8(?!\d)/ })
   revealObservedElements()
 

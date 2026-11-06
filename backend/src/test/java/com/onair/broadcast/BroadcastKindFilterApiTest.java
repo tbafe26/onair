@@ -55,7 +55,7 @@ class BroadcastKindFilterApiTest extends ApiTestSupport {
     }
 
     @Test
-    void kind가_LIVE이면_라이브방송이_아직_없으므로_빈_목록이다() throws Exception {
+    void kind가_LIVE이고_라이브방송이_없으면_녹화방송은_섞이지_않고_빈_목록이다() throws Exception {
         녹화방송을_등록한다("녹화방송");
 
         mockMvc.perform(get("/api/broadcasts?kind=LIVE"))

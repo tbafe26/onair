@@ -2,7 +2,9 @@ package com.onair.broadcast;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.time.Duration;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -49,6 +51,21 @@ class RegistrationRulesTest {
                 new RegistrationForm("  \t제목　\n", video(MP4_BYTES), null, null));
 
         assertThat(command.title()).isEqualTo("제목");
+    }
+
+    @Test
+    void 유니코드_공백은_앞뒤에서만_떼고_가운데는_남긴다() {
+        assertThat(RegistrationRules.trimWhiteSpace(" \u0085 a b　c \r"))
+                .isEqualTo("a b　c");
+        assertThat(RegistrationRules.trimWhiteSpace("\u001Fa​")).isEqualTo("\u001Fa​");
+    }
+
+    @Test
+    void 공백이_길게_이어진_입력도_곧바로_처리한다() {
+        String input = " ".repeat(200_000) + "x" + " ".repeat(200_000) + "y";
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> assertThat(RegistrationRules.trimWhiteSpace(input)).endsWith("x" + " ".repeat(200_000) + "y"));
     }
 
     @Test

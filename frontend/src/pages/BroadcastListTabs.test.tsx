@@ -43,16 +43,16 @@ it('"전체 방송" 제목 아래에 라이브와 녹화방송 탭이 이 순서
   expect(tabs.map((t) => t.textContent)).toEqual(['라이브', '녹화방송'])
 })
 
-it('주소에 kind가 없으면 녹화방송 탭이 선택되고 녹화방송 목록을 받는다', async () => {
+it('주소에 kind가 없으면 라이브 탭이 선택되고 라이브 목록을 받는다', async () => {
   const requests: string[] = []
   useKindServer(requests)
 
   renderApp('/')
 
-  expect(await screen.findByRole('link', { name: /녹화 2/ })).toBeInTheDocument()
-  expect(tab('녹화방송')).toHaveAttribute('aria-selected', 'true')
-  expect(tab('라이브')).toHaveAttribute('aria-selected', 'false')
-  expect(requests).toEqual(['?kind=RECORDING'])
+  expect(await screen.findByText('라이브 방송이 없습니다')).toBeInTheDocument()
+  expect(tab('라이브')).toHaveAttribute('aria-selected', 'true')
+  expect(tab('녹화방송')).toHaveAttribute('aria-selected', 'false')
+  expect(requests).toEqual(['?kind=LIVE'])
 })
 
 it('알 수 없는 kind 주소는 기본 탭으로 본다', async () => {
@@ -60,8 +60,8 @@ it('알 수 없는 kind 주소는 기본 탭으로 본다', async () => {
 
   renderApp('/?kind=VOD')
 
-  expect(await screen.findByRole('link', { name: /녹화 2/ })).toBeInTheDocument()
-  expect(tab('녹화방송')).toHaveAttribute('aria-selected', 'true')
+  expect(await screen.findByText('라이브 방송이 없습니다')).toBeInTheDocument()
+  expect(tab('라이브')).toHaveAttribute('aria-selected', 'true')
 })
 
 it('주소의 kind=LIVE로 열면 라이브 탭이 선택되고 라이브 목록을 받는다', async () => {
@@ -70,9 +70,12 @@ it('주소의 kind=LIVE로 열면 라이브 탭이 선택되고 라이브 목록
 
   renderApp('/?kind=LIVE')
 
-  expect(await screen.findByText('진행 중인 라이브 방송이 없습니다')).toBeInTheDocument()
+  expect(await screen.findByText('라이브 방송이 없습니다')).toBeInTheDocument()
   expect(tab('라이브')).toHaveAttribute('aria-selected', 'true')
   expect(screen.queryByText('등록된 방송이 없습니다')).not.toBeInTheDocument()
+  expect(
+    within(screen.getByRole('main')).getByRole('link', { name: '라이브 송출' }),
+  ).toHaveAttribute('href', '/broadcasts/live/new')
   expect(requests).toEqual(['?kind=LIVE'])
 })
 
@@ -85,7 +88,7 @@ it('탭을 누르면 그 종류의 첫 묶음부터 다시 불러오고 주소�
   await screen.findByRole('link', { name: /녹화 2/ })
 
   await user.click(tab('라이브'))
-  expect(await screen.findByText('진행 중인 라이브 방송이 없습니다')).toBeInTheDocument()
+  expect(await screen.findByText('라이브 방송이 없습니다')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /녹화 2/ })).not.toBeInTheDocument()
   expect(router.state.location.search).toBe('?kind=LIVE')
 

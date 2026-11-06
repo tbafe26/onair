@@ -16,25 +16,40 @@ final class BroadcastResponses {
         return BASE_PATH + id;
     }
 
-    /** 요약은 상세에서 뽑는다. 종류별 구분은 detail 한 곳에서만 한다. */
     static BroadcastSummary summary(Broadcast broadcast) {
-        BroadcastDetail detail = detail(broadcast);
-        return new BroadcastSummary(
-                detail.id(), detail.kind(), detail.title(), detail.createdAt(),
-                detail.video().durationSeconds(), detail.video().thumbnailUrl());
+        return switch (broadcast) {
+            case RecordingBroadcast r -> new BroadcastSummary.Recording(
+                    r.getId(), r.getKind(), r.getTitle(), r.getCreatedAt(),
+                    r.durationSeconds() == null ? null : r.durationSeconds().value(),
+                    thumbnailUrl(r));
+            case LiveBroadcast l -> new BroadcastSummary.Live(
+                    l.getId(), l.getKind(), l.getTitle(), l.getCreatedAt(), thumbnailUrl(l), l.status());
+            default -> throw unsupported(broadcast);
+        };
     }
 
     static BroadcastDetail detail(Broadcast broadcast) {
         return switch (broadcast) {
-            case RecordingBroadcast r -> new BroadcastDetail(
+            case RecordingBroadcast r -> new BroadcastDetail.Recording(
                     r.getId(), r.getKind(), r.getTitle(), r.getCreatedAt(),
                     new BroadcastDetail.VideoInfo(
                             location(r.getId()) + "/video",
                             r.videoFormat().mediaType(),
                             r.videoSizeBytes(),
                             r.durationSeconds() == null ? null : r.durationSeconds().value(),
-                            r.hasThumbnail() ? location(r.getId()) + "/thumbnail" : null));
-            default -> throw new IllegalStateException("응답으로 바꿀 수 없는 방송 종류입니다: " + broadcast.getClass());
+                            thumbnailUrl(r)));
+            case LiveBroadcast l -> new BroadcastDetail.Live(
+                    l.getId(), l.getKind(), l.getTitle(), l.getCreatedAt(), thumbnailUrl(l),
+                    l.status(), l.endedAt());
+            default -> throw unsupported(broadcast);
         };
+    }
+
+    private static String thumbnailUrl(Broadcast broadcast) {
+        return broadcast.thumbnailKey() == null ? null : location(broadcast.getId()) + "/thumbnail";
+    }
+
+    private static IllegalStateException unsupported(Broadcast broadcast) {
+        return new IllegalStateException("응답으로 바꿀 수 없는 방송 종류입니다: " + broadcast.getClass());
     }
 }

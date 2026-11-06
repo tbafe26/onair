@@ -74,8 +74,7 @@ class BroadcastService {
         List<Broadcast> found = switch (kind) {
             case null -> repository.findBefore(cursor, window);
             case RECORDING -> repository.findRecordingsBefore(cursor, window);
-            // 라이브방송 엔티티가 생기면(티켓 04) 여기서 라이브방송만 읽는다.
-            case LIVE -> List.of();
+            case LIVE -> repository.findLiveBefore(cursor, window);
         };
         boolean hasNext = found.size() > size;
         List<BroadcastSummary> items = found.stream().limit(size).map(BroadcastResponses::summary).toList();
@@ -103,7 +102,7 @@ class BroadcastService {
     /** 썸네일 리소스를 연다. 방송이 없으면 404, 썸네일이 없으면 썸네일 없음 404, 저장된 파일이 사라졌으면 파일 없음 404 예외다. */
     @Transactional(readOnly = true)
     Resource thumbnail(long id) {
-        String key = findRecording(id).thumbnailKey();
+        String key = repository.findById(id).orElseThrow(() -> new BroadcastNotFoundException(id)).thumbnailKey();
         if (key == null) {
             throw new ThumbnailNotFoundException(id);
         }

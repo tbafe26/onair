@@ -21,19 +21,24 @@ const sidebar = () => screen.getByRole('navigation', { name: '주 메뉴' })
 const hamburger = () => screen.getByRole('button', { name: '사이드바 접기/펼치기' })
 const themeButton = () => screen.getByRole('button', { name: '테마 전환' })
 
-it('헤더에 로고 링크와 방송 등록 버튼이, 본문에 전체 방송 제목이 보인다', async () => {
+it('헤더에 로고 링크와 녹화방송 등록·라이브 송출 버튼이, 본문에 전체 방송 제목이 보인다', async () => {
   renderApp('/')
 
   const header = screen.getByRole('banner')
   expect(within(header).getByRole('link', { name: '온에어' })).toHaveAttribute('href', '/')
-  expect(within(header).getByRole('link', { name: '방송 등록' })).toHaveAttribute(
+  expect(within(header).getByRole('link', { name: '녹화방송 등록' })).toHaveAttribute(
     'href',
     '/broadcasts/new',
   )
+  expect(within(header).getByRole('link', { name: '라이브 송출' })).toHaveAttribute(
+    'href',
+    '/broadcasts/live/new',
+  )
+  expect(within(header).queryByRole('link', { name: '방송 등록' })).not.toBeInTheDocument()
   expect(
     within(screen.getByRole('main')).getByRole('heading', { name: '전체 방송' }),
   ).toBeInTheDocument()
-  expect(await screen.findByText('등록된 방송이 없습니다')).toBeInTheDocument()
+  expect(await screen.findByText('라이브 방송이 없습니다')).toBeInTheDocument()
 })
 
 it('사이드바에 전체 방송과 방송 등록 메뉴가 있고 현재 주소의 메뉴만 강조된다', async () => {

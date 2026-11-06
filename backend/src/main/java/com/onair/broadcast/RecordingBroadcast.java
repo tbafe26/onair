@@ -51,7 +51,7 @@ public class RecordingBroadcast extends Broadcast {
         return video.getThumbnailKey() != null;
     }
 
-    /** 썸네일 저장 키. 썸네일이 없으면 null이다. */
+    @Override
     String thumbnailKey() {
         return video.getThumbnailKey();
     }
