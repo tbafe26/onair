@@ -31,8 +31,11 @@ class LiveBroadcastingTest extends ApiTestSupport {
     @Autowired
     PlatformTransactionManager transactionManager;
 
+    @Autowired
+    Comments comments;
+
     LiveBroadcasting 상한이_있는_모듈(int maxViewers) {
-        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, maxViewers);
+        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, comments, maxViewers);
     }
 
     StartedLive 시작한다(String title) {
