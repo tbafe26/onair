@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -78,6 +79,8 @@ class SecurityConfig {
                 .securityContext(context -> context.securityContextRepository(contexts))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/api/auth/me").authenticated()
+                        // 본문을 읽기 전에 거른다. 그래야 비로그인 요청이 본문 오류(400)보다 먼저 401을 받는다.
+                        .requestMatchers(HttpMethod.PATCH, "/api/broadcasts/*").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, e) -> writeProblem(

@@ -280,7 +280,7 @@ public class LiveBroadcasting {
 
     private JoinResult check(long broadcastId, String streamKey, Long userId, Peer peer) {
         return checkOnAir(broadcastId, live -> {
-            if (userId == null || !userId.equals(live.getOwner().getId())) {
+            if (userId == null || !live.isOwnedBy(userId)) {
                 return JoinResult.Rejection.NOT_OWNER;
             }
             if (!live.matchesStreamKey(streamKey)) {

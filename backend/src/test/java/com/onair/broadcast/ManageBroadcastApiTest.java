@@ -118,6 +118,19 @@ class ManageBroadcastApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 비로그인_제목_수정은_본문이_없거나_깨져도_401이다() throws Exception {
+        int id = 녹화방송을_올린다("원래 제목");
+
+        mockMvc.perform(patch("/api/broadcasts/{id}", id).with(비로그인().credentials()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/broadcasts/{id}", id).with(비로그인().credentials())
+                        .contentType(MediaType.APPLICATION_JSON).content("{깨진"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/broadcasts/{id}", id).with(소유자().credentials()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 제목_수정도_등록과_같은_규칙으로_검사한다() throws Exception {
         int id = 녹화방송을_올린다("원래 제목");
 
