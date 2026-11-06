@@ -1,16 +1,14 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type FormEvent } from 'react'
 import { useBlocker, useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { fetchUploadPolicy } from '../api/broadcasts'
 import { Button } from '../components/ui/button'
 import type { CameraFacing, CameraInfo, CameraUnavailableReason } from '../live/broadcaster'
 import { browserBroadcasterDeps } from '../live/browser-deps'
+import { useBroadcastInput } from '../hooks/useBroadcastInput'
 import { useThumbnailPicker } from '../hooks/useThumbnailPicker'
-import { browserImageDeps } from '../lib/thumbnail-image-browser'
 import { useLiveBroadcaster } from '../live/useLiveBroadcaster'
 import { formatDuration } from '../lib/format'
-import { validateTitle } from '../lib/upload-rules'
 
 const inputClass =
   'h-11 w-full rounded-xl border border-border bg-background px-4 text-foreground outline-none placeholder:text-sub focus-visible:ring-2 focus-visible:ring-ring'
@@ -94,20 +92,24 @@ export function LiveBroadcastPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { state, camera, start, end, switchCamera } = useLiveBroadcaster(browserBroadcasterDeps)
-  // 썸네일 상한은 서버 정책에서 받는다. 받지 못하면 크기는 서버에 맡긴다.
-  const { data: uploadPolicy } = useQuery({
-    queryKey: broadcastKeys.uploadPolicy(),
-    queryFn: fetchUploadPolicy,
-    retry: false,
-  })
-  const thumbnail = useThumbnailPicker(browserImageDeps, uploadPolicy?.maxThumbnailBytes ?? null)
+  const { input } = useBroadcastInput()
+  const thumbnail = useThumbnailPicker(input.convertThumbnail)
   const thumbnailInputRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [titleError, setTitleError] = useState<string | null>(null)
+  // 제목을 고친 시점의 서버 오류 묶음. 같은 묶음이면 낡은 오류라 더 보여 주지 않는다.
+  const [editedAgainst, setEditedAgainst] = useState<unknown>(null)
   const [confirmingEnd, setConfirmingEnd] = useState(false)
   const [ending, setEnding] = useState(false)
 
   const onAir = state.phase === 'onAir'
+
+  // 서버가 거절한 필드는 직접 검사한 결과와 같은 자리에 보여 준다.
+  const serverErrors =
+    state.phase === 'previewing' ? input.placeFailure({ kind: 'invalid', fieldErrors: state.startFieldErrors }) : null
+  const serverTitleError =
+    state.phase === 'previewing' && state.startFieldErrors !== editedAgainst ? serverErrors?.title : null
+  const titleMessage = titleError ?? serverTitleError ?? null
 
   // 송출 중에 다른 화면으로 나가거나 탭을 닫으면 방송이 끝나므로 한 번 확인한다.
   const blocker = useBlocker(onAir)
@@ -129,7 +131,7 @@ export function LiveBroadcastPage() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (state.phase !== 'previewing') return
-    const problem = validateTitle(title, null)
+    const problem = input.checkTitle(title)
     setTitleError(problem)
     if (problem) return
     void start({
@@ -187,16 +189,17 @@ export function LiveBroadcastPage() {
               onChange={(event) => {
                 setTitle(event.target.value)
                 setTitleError(null)
+                setEditedAgainst(state.phase === 'previewing' ? state.startFieldErrors : null)
               }}
               placeholder="방송 제목을 입력하세요"
               disabled={state.phase === 'starting'}
-              aria-invalid={titleError !== null}
-              aria-describedby={titleError ? 'live-title-error' : undefined}
+              aria-invalid={titleMessage !== null}
+              aria-describedby={titleMessage ? 'live-title-error' : undefined}
               className={inputClass}
             />
-            {titleError && (
+            {titleMessage && (
               <p id="live-title-error" className="text-sm text-destructive">
-                {titleError}
+                {titleMessage}
               </p>
             )}
           </div>
@@ -241,7 +244,12 @@ export function LiveBroadcastPage() {
               </div>
             )}
           </div>
-          {state.phase === 'previewing' && state.startFailure && (
+          {serverErrors?.others.map((message) => (
+            <p key={message} role="alert" className="text-destructive">
+              {message}
+            </p>
+          ))}
+          {state.phase === 'previewing' && state.startFailure && !serverErrors?.title && !serverErrors?.others.length && (
             <p role="alert" className="text-destructive">
               {state.startFailure}
             </p>

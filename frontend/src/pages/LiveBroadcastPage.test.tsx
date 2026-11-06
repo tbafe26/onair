@@ -3,11 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
-import type {
-  BroadcasterDeps,
-  SignalingChannel,
-  SignalingHandlers,
-  SignalMessage,
+import {
+  StartRejectedError,
+  type BroadcasterDeps,
+  type SignalingChannel,
+  type SignalingHandlers,
+  type SignalMessage,
 } from '../live/broadcaster'
 import { createFakePeer, type FakePeer } from '../test/fakePeer'
 import { renderApp } from '../test/renderApp'
@@ -163,6 +164,48 @@ it('제목이 비어 있으면 송출을 시작하지 않고 이유를 보여 �
 
   expect(screen.getByText('제목을 입력하세요')).toBeInTheDocument()
   expect(startLive).not.toHaveBeenCalled()
+})
+
+it('제목이 정책의 상한을 넘으면 송출을 시작하지 않고 이유를 보여 준다', async () => {
+  const startLive = vi.fn(async () => ({ id: 7, streamKey: 'fake-stream-key' }))
+  resetFake({ startLive })
+  const user = userEvent.setup()
+  renderApp('/broadcasts/live/new')
+
+  await user.click(await screen.findByLabelText('제목'))
+  await user.paste('가'.repeat(101))
+  await user.click(screen.getByRole('button', { name: '송출 시작' }))
+
+  expect(await screen.findByText('제목은 100자 이하로 입력하세요')).toBeInTheDocument()
+  expect(screen.getByLabelText('제목')).toHaveAccessibleDescription('제목은 100자 이하로 입력하세요')
+  expect(startLive).not.toHaveBeenCalled()
+})
+
+it('서버가 돌려준 필드 오류를 입력란 옆에 보여 주고, 제목을 고치면 지운다', async () => {
+  const startLive = vi
+    .fn<BroadcasterDeps['startLive']>()
+    .mockRejectedValueOnce(
+      new StartRejectedError('서버가 말하는 제목 오류', {
+        title: '서버가 말하는 제목 오류',
+        thumbnail: '서버가 말하는 썸네일 오류',
+      }),
+    )
+    .mockResolvedValue({ id: 7, streamKey: 'fake-stream-key' })
+  resetFake({ startLive })
+  const user = userEvent.setup()
+  renderApp('/broadcasts/live/new')
+
+  await user.type(await screen.findByLabelText('제목'), '내 라이브')
+  await user.click(screen.getByRole('button', { name: '송출 시작' }))
+
+  await waitFor(() =>
+    expect(screen.getByLabelText('제목')).toHaveAccessibleDescription('서버가 말하는 제목 오류'),
+  )
+  expect(screen.getByRole('alert')).toHaveTextContent('서버가 말하는 썸네일 오류')
+  expect(screen.getByLabelText('제목')).toHaveValue('내 라이브')
+
+  await user.type(screen.getByLabelText('제목'), '!')
+  expect(screen.getByLabelText('제목')).not.toHaveAccessibleDescription()
 })
 
 it('송출을 시작하는 동안에는 버튼을 다시 누를 수 없다', async () => {
