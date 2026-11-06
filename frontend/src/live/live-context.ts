@@ -1,11 +1,13 @@
 import { createContext, useContext } from 'react'
 import type { LiveBroadcaster } from './broadcaster'
+import type { LiveChat } from './chat'
 import type { LiveViewer } from './viewer'
 
-/** 화면이 송출·시청 모듈을 얻는 이음매. 수명(open/join, dispose)은 훅이 맡으므로 만들기만 한다. */
+/** 화면이 송출·시청·채팅 모듈을 얻는 이음매. 수명(open/join, dispose)은 훅이 맡으므로 만들기만 한다. */
 export interface Live {
   createBroadcaster(): LiveBroadcaster
   createViewer(broadcastId: number): LiveViewer
+  createChat(broadcastId: number): LiveChat
 }
 
 export const LiveContext = createContext<Live | null>(null)

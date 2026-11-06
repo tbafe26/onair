@@ -67,6 +67,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return respond(e, problem(HttpStatus.CONFLICT, "방송 중", e.getMessage()), new HttpHeaders(), request);
     }
 
+    @ExceptionHandler(ChatClosedException.class)
+    ResponseEntity<Object> handleChatClosed(ChatClosedException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.CONFLICT, "채팅 종료", e.getMessage()), new HttpHeaders(), request);
+    }
+
+    @ExceptionHandler(ChatNotDeletableException.class)
+    ResponseEntity<Object> handleChatNotDeletable(ChatNotDeletableException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.CONFLICT, "채팅 삭제 불가", e.getMessage()), new HttpHeaders(), request);
+    }
+
     @ExceptionHandler(NotLiveBroadcastException.class)
     ResponseEntity<Object> handleNotLive(NotLiveBroadcastException e, WebRequest request) {
         return respond(e, problem(HttpStatus.CONFLICT, "라이브방송 아님", e.getMessage()), new HttpHeaders(), request);

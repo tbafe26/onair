@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import type { BroadcasterState, CameraInfo, LiveBroadcaster } from '../live/broadcaster'
+import type { ChatState, LiveChat } from '../live/chat'
 import type { Live } from '../live/live-context'
 import type { LiveViewer, ViewerState } from '../live/viewer'
 
@@ -18,6 +19,13 @@ export interface FakeViewer extends LiveViewer {
   setState(state: ViewerState): void
   join: ReturnType<typeof vi.fn<LiveViewer['join']>>
   dispose: ReturnType<typeof vi.fn<LiveViewer['dispose']>>
+}
+
+export interface FakeChat extends LiveChat {
+  setState(state: ChatState): void
+  join: ReturnType<typeof vi.fn<LiveChat['join']>>
+  send: ReturnType<typeof vi.fn<LiveChat['send']>>
+  dispose: ReturnType<typeof vi.fn<LiveChat['dispose']>>
 }
 
 export const fakeStream = () => ({ getTracks: () => [] }) as unknown as MediaStream
@@ -74,14 +82,28 @@ export function createFakeViewer(): FakeViewer {
   }
 }
 
+export function createFakeChat(): FakeChat {
+  const state = createStore<ChatState>({ phase: 'connecting' })
+  return {
+    state: state.get,
+    subscribe: state.subscribe,
+    setState: state.set,
+    join: vi.fn(),
+    send: vi.fn(async () => {}),
+    dispose: vi.fn(),
+  }
+}
+
 /**
- * 화면 테스트용 Live. 화면 하나가 모듈 하나를 만든다고 보고 같은 가짜를 돌려준다.
+ * 화면 테스트용 Live. 화면 하나가 모듈 하나를 만든다고 보고 같은 가짜를 돌려준다(채팅도 같다).
  * createViewer는 부른 방송 번호와 횟수를 기록하므로 시청 연결을 만들지 않았는지도 확인할 수 있다.
  */
 export function createFakeLive() {
   const broadcaster = createFakeBroadcaster()
   const viewer = createFakeViewer()
+  const chat = createFakeChat()
   const createViewer = vi.fn<Live['createViewer']>(() => viewer)
-  const live: Live = { createBroadcaster: () => broadcaster, createViewer }
-  return { live, broadcaster, viewer, createViewer }
+  const createChat = vi.fn<Live['createChat']>(() => chat)
+  const live: Live = { createBroadcaster: () => broadcaster, createViewer, createChat }
+  return { live, broadcaster, viewer, createViewer, chat, createChat }
 }

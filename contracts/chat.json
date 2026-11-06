@@ -1,0 +1,9 @@
+{
+  "$comment": "채팅 WebSocket(/api/broadcasts/{id}/chat) 계약. 서버 -> 화면 한 방향이다. 백엔드(Comments, CommentView)와 프런트(live/chat-protocol.ts)가 각자 테스트로 이 파일과 대조한다. 메시지를 바꾸면 이 파일과 양쪽을 함께 고친다.",
+  "messages": {
+    "comment": { "server->client": ["comment"] },
+    "ended": { "server->client": [] }
+  },
+  "commentFields": ["id", "content", "author", "createdAt"],
+  "authorFields": ["id", "nickname"]
+}
