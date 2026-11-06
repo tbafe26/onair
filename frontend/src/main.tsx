@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { shouldRetryQuery } from './api/query-retry'
+import { AuthProvider } from './auth/AuthProvider'
 import './index.css'
 import { LiveProvider } from './live/LiveProvider'
 import { routes } from './routes'
@@ -14,9 +15,11 @@ const router = createBrowserRouter(routes)
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <LiveProvider>
-        <RouterProvider router={router} />
-      </LiveProvider>
+      <AuthProvider>
+        <LiveProvider>
+          <RouterProvider router={router} />
+        </LiveProvider>
+      </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

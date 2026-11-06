@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { APP_NAME } from '@/app-name'
 import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/useMediaQuery'
+import { AuthMenu } from './AuthMenu'
 import { useTheme } from './theme'
 
 type HeaderProps = {
@@ -58,6 +59,7 @@ export function Header({ onToggleSidebar, sidebarExpanded }: HeaderProps) {
             </Button>
           </>
         )}
+        <AuthMenu />
       </div>
     </header>
   )
