@@ -8,6 +8,7 @@ import {
   type LiveBroadcastDetail,
   type RecordingBroadcastDetail,
 } from '../api/broadcasts'
+import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
 import { VideoPlayer } from '../components/VideoPlayer'
@@ -82,7 +83,11 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
   return (
     <div className="-mx-5 -mt-8 flex flex-col lg:flex-row lg:items-start">
       <section className="min-w-0 flex-1">
-        {onAir ? <LiveViewer key={data.id} broadcastId={data.id} /> : <LiveStatusBox text={ENDED_TEXT} />}
+        {onAir ? (
+          <LiveViewer key={data.id} broadcastId={data.id} thumbnailUrl={data.thumbnailUrl} />
+        ) : (
+          <LiveStatusBox text={ENDED_TEXT} thumbnailUrl={data.thumbnailUrl} />
+        )}
         <div className="px-5">
           <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
             {data.title}
@@ -106,10 +111,14 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
 
 const ENDED_TEXT = '방송이 종료되었습니다'
 
-function LiveStatusBox({ text }: { text: string }) {
+/** 영상이 없을 때의 안내 상자. 썸네일(없으면 기본 이미지)을 어둡게 깔고 그 위에 문구를 얹는다. */
+function LiveStatusBox({ text, thumbnailUrl }: { text: string; thumbnailUrl: string | null }) {
   return (
-    <div className="flex aspect-video w-full items-center justify-center bg-black text-white">
-      <p role="status" className="px-5 text-center text-lg font-semibold">
+    <div className="relative flex aspect-video w-full items-center justify-center bg-black text-white">
+      <div className="absolute inset-0 opacity-40">
+        <BroadcastThumbnail url={thumbnailUrl} iconClassName="size-16" />
+      </div>
+      <p role="status" className="relative px-5 text-center text-lg font-semibold">
         {text}
       </p>
     </div>
@@ -117,7 +126,7 @@ function LiveStatusBox({ text }: { text: string }) {
 }
 
 /** 방송 중인 라이브방송의 영상 영역. 소리 없이 자동 재생하고, 버튼으로 소리를 켠다. */
-function LiveViewer({ broadcastId }: { broadcastId: number }) {
+function LiveViewer({ broadcastId, thumbnailUrl }: { broadcastId: number; thumbnailUrl: string | null }) {
   const viewer = useLiveViewer(browserViewerDeps, broadcastId)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [soundOn, setSoundOn] = useState(false)
@@ -127,11 +136,11 @@ function LiveViewer({ broadcastId }: { broadcastId: number }) {
     if (videoRef.current) videoRef.current.srcObject = stream
   }, [stream])
 
-  if (viewer.phase === 'connecting') return <LiveStatusBox text="연결 중…" />
-  if (viewer.phase === 'ended') return <LiveStatusBox text={ENDED_TEXT} />
-  if (viewer.phase === 'full') return <LiveStatusBox text="시청자가 많아 지금은 볼 수 없습니다" />
+  if (viewer.phase === 'connecting') return <LiveStatusBox text="연결 중…" thumbnailUrl={thumbnailUrl} />
+  if (viewer.phase === 'ended') return <LiveStatusBox text={ENDED_TEXT} thumbnailUrl={thumbnailUrl} />
+  if (viewer.phase === 'full') return <LiveStatusBox text="시청자가 많아 지금은 볼 수 없습니다" thumbnailUrl={thumbnailUrl} />
   if (viewer.phase === 'failed') {
-    return <LiveStatusBox text="연결하지 못했습니다. 잠시 뒤 새로고침해 다시 시도해 주세요." />
+    return <LiveStatusBox text="연결하지 못했습니다. 잠시 뒤 새로고침해 다시 시도해 주세요." thumbnailUrl={thumbnailUrl} />
   }
   return (
     <div className="relative aspect-video w-full bg-black">

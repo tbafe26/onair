@@ -75,6 +75,21 @@ class LiveBroadcastApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 내용이_JPEG가_아니거나_2MB를_넘는_썸네일은_400이고_방송이_만들어지지_않는다() throws Exception {
+        byte[] big = new byte[2 * 1024 * 1024 + 1];
+        System.arraycopy(JPEG_BYTES, 0, big, 0, JPEG_BYTES.length);
+        for (byte[] bad : new byte[][] {"not a jpeg".getBytes(), big}) {
+            mockMvc.perform(multipart("/api/broadcasts/live")
+                            .file(new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", bad))
+                            .param("title", "썸네일"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(jsonPath("$.errors[0].field").value("thumbnail"));
+        }
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
     void 썸네일을_보내면_요약과_상세에_썸네일_주소가_있고_내려받을_수_있다() throws Exception {
         String body = mockMvc.perform(multipart("/api/broadcasts/live")
                         .file(new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", JPEG_BYTES))

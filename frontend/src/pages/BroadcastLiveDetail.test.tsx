@@ -110,6 +110,28 @@ it('종료된 라이브방송은 종료 문구와 시작·종료 시각을 보�
   expect(screen.getByText(/^종료/)).toBeInTheDocument()
 })
 
+it('종료된 라이브방송 상세는 고른 썸네일을 깔고, 없으면 기본 이미지를 보여 준다', async () => {
+  server.use(
+    http.get('/api/broadcasts/5', () =>
+      HttpResponse.json({
+        ...liveDetail('ENDED', '2026-03-15T13:30:00Z'),
+        thumbnailUrl: '/api/broadcasts/5/thumbnail',
+      }),
+    ),
+    http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
+  )
+  const first = renderApp('/broadcasts/5')
+  await screen.findByText('방송이 종료되었습니다')
+  expect(first.container.querySelector('img')).toHaveAttribute('src', '/api/broadcasts/5/thumbnail')
+  first.unmount()
+
+  stubLive('ENDED', '2026-03-15T13:30:00Z')
+  const second = renderApp('/broadcasts/5')
+  await screen.findByText('방송이 종료되었습니다')
+  expect(second.container.querySelector('img')).toBeNull()
+  expect(screen.getAllByRole('img', { name: '썸네일 없음' }).length).toBeGreaterThan(0)
+})
+
 it('라이브방송 상세에도 다른 방송 패널이 있다', async () => {
   stubLive('ON_AIR', null)
 

@@ -1,10 +1,13 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type FormEvent } from 'react'
 import { useBlocker, useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
+import { fetchUploadPolicy } from '../api/broadcasts'
 import { Button } from '../components/ui/button'
 import type { CameraUnavailableReason } from '../live/broadcaster'
 import { browserBroadcasterDeps } from '../live/browser-deps'
+import { useThumbnailPicker } from '../hooks/useThumbnailPicker'
+import { browserImageDeps } from '../lib/thumbnail-image-browser'
 import { useLiveBroadcaster } from '../live/useLiveBroadcaster'
 import { formatDuration } from '../lib/format'
 import { validateTitle } from '../lib/upload-rules'
@@ -65,6 +68,14 @@ export function LiveBroadcastPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { state, start, end } = useLiveBroadcaster(browserBroadcasterDeps)
+  // 썸네일 상한은 서버 정책에서 받는다. 받지 못하면 크기는 서버에 맡긴다.
+  const { data: uploadPolicy } = useQuery({
+    queryKey: broadcastKeys.uploadPolicy(),
+    queryFn: fetchUploadPolicy,
+    retry: false,
+  })
+  const thumbnail = useThumbnailPicker(browserImageDeps, uploadPolicy?.maxThumbnailBytes ?? null)
+  const thumbnailInputRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [titleError, setTitleError] = useState<string | null>(null)
   const [confirmingEnd, setConfirmingEnd] = useState(false)
@@ -95,7 +106,20 @@ export function LiveBroadcastPage() {
     const problem = validateTitle(title, null)
     setTitleError(problem)
     if (problem) return
-    void start({ title, thumbnail: null })
+    void start({
+      title,
+      thumbnail: thumbnail.selection.status === 'ready' ? thumbnail.selection.blob : null,
+    })
+  }
+
+  function handleThumbnailChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (file) void thumbnail.select(file)
+  }
+
+  function handleThumbnailClear() {
+    thumbnail.clear()
+    if (thumbnailInputRef.current) thumbnailInputRef.current.value = ''
   }
 
   async function handleEnd() {
@@ -147,6 +171,47 @@ export function LiveBroadcastPage() {
               <p id="live-title-error" className="text-sm text-destructive">
                 {titleError}
               </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="live-thumbnail" className="font-semibold text-title">
+              썸네일 <span className="font-normal text-sub">(선택)</span>
+            </label>
+            <input
+              ref={thumbnailInputRef}
+              id="live-thumbnail"
+              type="file"
+              accept="image/*"
+              onChange={handleThumbnailChange}
+              disabled={state.phase === 'starting'}
+              className="text-sub"
+            />
+            {thumbnail.selection.status === 'converting' && (
+              <p role="status" className="text-sub">
+                썸네일을 준비하는 중입니다.
+              </p>
+            )}
+            {thumbnail.selection.status === 'unusable' && (
+              <p role="alert" className="text-sm text-destructive">
+                {thumbnail.selection.message}
+              </p>
+            )}
+            {thumbnail.selection.status === 'ready' && (
+              <div className="flex flex-col items-start gap-2">
+                <img
+                  src={thumbnail.selection.previewUrl}
+                  alt="썸네일 미리보기"
+                  className="aspect-video w-full max-w-xs rounded-xl object-cover"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={state.phase === 'starting'}
+                  onClick={handleThumbnailClear}
+                >
+                  썸네일 선택 취소
+                </Button>
+              </div>
             )}
           </div>
           {state.phase === 'previewing' && state.startFailure && (
