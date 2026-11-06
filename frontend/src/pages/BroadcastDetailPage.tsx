@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../auth/auth-context'
 import { BroadcastOwnerActions } from '../components/BroadcastOwnerActions'
 import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
+import { RecordingComments } from '../components/RecordingComments'
 import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
 import { VideoPlayer } from '../components/VideoPlayer'
@@ -89,6 +90,7 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
             <time dateTime={data.createdAt}>{formatDateTime(data.createdAt)}</time>
           </p>
           <OwnerActions broadcast={data} />
+          <RecordingComments broadcastId={data.id} />
         </div>
       </section>
       <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">
