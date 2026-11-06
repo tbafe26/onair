@@ -96,4 +96,27 @@ class MultipartLimitApiTest {
         assertThat(response.getBody()).contains("\"maxBytes\":" + VIDEO_LIMIT);
         assertThat(response.getBody()).contains("영상은 4KB 이하만 올릴 수 있습니다");
     }
+
+    @Test
+    void 영상이_없는_라이브_시작이_상한을_넘으면_썸네일_기준의_문구로_413이다() {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("title", "상한 테스트");
+        body.add("thumbnail", file(jpeg(VIDEO_LIMIT + 1), "t.jpg"));
+
+        ResponseEntity<String> response = RestClient.create("http://localhost:" + port)
+                .post()
+                .uri("/api/broadcasts/live")
+                .header("Cookie", 로그인한_쿠키())
+                .header(Csrf.HEADER, Csrf.TOKEN)
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .onStatus(status -> true, (request, response1) -> { })
+                .toEntity(String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(413);
+        assertThat(response.getBody()).contains("\"maxBytes\":" + RegistrationRules.MAX_THUMBNAIL_BYTES);
+        assertThat(response.getBody()).contains("썸네일은 2MB 이하만 올릴 수 있습니다");
+        assertThat(response.getBody()).doesNotContain("영상");
+    }
 }

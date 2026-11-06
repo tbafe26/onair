@@ -6,7 +6,8 @@ import { ChatPanel } from '../components/ChatPanel'
 import { Button } from '../components/ui/button'
 import type { CameraFacing, CameraInfo, CameraUnavailableReason } from '../live/broadcaster'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
-import { useThumbnailPicker } from '../hooks/useThumbnailPicker'
+import { useBroadcastForm } from '../hooks/useBroadcastForm'
+import { START_FAILURE_MESSAGE } from '../live/signaling-protocol'
 import { useLiveBroadcaster } from '../live/useLiveBroadcaster'
 import { formatDuration } from '../lib/format'
 
@@ -93,23 +94,23 @@ export function LiveBroadcastPage() {
   const queryClient = useQueryClient()
   const { state, camera, start, end, switchCamera } = useLiveBroadcaster()
   const { input } = useBroadcastInput()
-  const thumbnail = useThumbnailPicker(input.convertThumbnail)
+  const form = useBroadcastForm(input)
+  const { thumbnail, showFailure } = form
   const thumbnailInputRef = useRef<HTMLInputElement>(null)
-  const [title, setTitle] = useState('')
-  const [titleError, setTitleError] = useState<string | null>(null)
-  // 제목을 고친 시점의 서버 오류 묶음. 같은 묶음이면 낡은 오류라 더 보여 주지 않는다.
-  const [editedAgainst, setEditedAgainst] = useState<unknown>(null)
   const [confirmingEnd, setConfirmingEnd] = useState(false)
   const [ending, setEnding] = useState(false)
 
   const onAir = state.phase === 'onAir'
 
-  // 서버가 거절한 필드는 직접 검사한 결과와 같은 자리에 보여 준다.
-  const serverErrors =
-    state.phase === 'previewing' ? input.placeFailure({ kind: 'invalid', fieldErrors: state.startFieldErrors }) : null
-  const serverTitleError =
-    state.phase === 'previewing' && state.startFieldErrors !== editedAgainst ? serverErrors?.title : null
-  const titleMessage = titleError ?? serverTitleError ?? null
+  // 송출 시작이 실패하면 서버가 거절한 필드를 직접 검사한 결과와 같은 자리에 보여 준다.
+  const startFailure = state.phase === 'previewing' ? state.startFailure : null
+  useEffect(() => {
+    // 영상이 없는 요청이라 413은 썸네일의 것이다.
+    if (startFailure !== null && startFailure.kind !== 'message') showFailure(startFailure, 'thumbnail')
+  }, [startFailure, showFailure])
+  const thumbnailMessage = thumbnail.selection.status === 'unusable' ? thumbnail.selection.message : form.thumbnailError
+  const failureMessage =
+    startFailure?.kind === 'message' ? startFailure.message : form.unknown ? START_FAILURE_MESSAGE : null
 
   // 송출 중에 다른 화면으로 나가거나 탭을 닫으면 방송이 끝나므로 한 번 확인한다.
   const blocker = useBlocker(onAir)
@@ -131,11 +132,10 @@ export function LiveBroadcastPage() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (state.phase !== 'previewing') return
-    const problem = input.checkTitle(title)
-    setTitleError(problem)
-    if (problem) return
+    form.clearFailure()
+    if (!form.checkTitle()) return
     void start({
-      title,
+      title: form.title,
       thumbnail: thumbnail.selection.status === 'ready' ? thumbnail.selection.blob : null,
     })
   }
@@ -185,21 +185,17 @@ export function LiveBroadcastPage() {
             <input
               id="live-title"
               type="text"
-              value={title}
-              onChange={(event) => {
-                setTitle(event.target.value)
-                setTitleError(null)
-                setEditedAgainst(state.phase === 'previewing' ? state.startFieldErrors : null)
-              }}
+              value={form.title}
+              onChange={(event) => form.changeTitle(event.target.value)}
               placeholder="방송 제목을 입력하세요"
               disabled={state.phase === 'starting'}
-              aria-invalid={titleMessage !== null}
-              aria-describedby={titleMessage ? 'live-title-error' : undefined}
+              aria-invalid={form.titleError !== null}
+              aria-describedby={form.titleError ? 'live-title-error' : undefined}
               className={inputClass}
             />
-            {titleMessage && (
+            {form.titleError && (
               <p id="live-title-error" className="text-sm text-destructive">
-                {titleMessage}
+                {form.titleError}
               </p>
             )}
           </div>
@@ -221,9 +217,9 @@ export function LiveBroadcastPage() {
                 썸네일을 준비하는 중입니다.
               </p>
             )}
-            {thumbnail.selection.status === 'unusable' && (
+            {thumbnailMessage && (
               <p role="alert" className="text-sm text-destructive">
-                {thumbnail.selection.message}
+                {thumbnailMessage}
               </p>
             )}
             {thumbnail.selection.status === 'ready' && (
@@ -244,14 +240,9 @@ export function LiveBroadcastPage() {
               </div>
             )}
           </div>
-          {serverErrors?.others.map((message) => (
-            <p key={message} role="alert" className="text-destructive">
-              {message}
-            </p>
-          ))}
-          {state.phase === 'previewing' && state.startFailure && !serverErrors?.title && !serverErrors?.others.length && (
+          {state.phase === 'previewing' && failureMessage && (
             <p role="alert" className="text-destructive">
-              {state.startFailure}
+              {failureMessage}
             </p>
           )}
           <Button type="submit" disabled={state.phase === 'starting'} className="h-12 w-full text-base">

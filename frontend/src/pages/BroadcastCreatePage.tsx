@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
 import { decodeFailure, registerBroadcast } from '../api/broadcasts'
 import { Button } from '../components/ui/button'
+import { useBroadcastForm } from '../hooks/useBroadcastForm'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
 import { useVideoSelection } from '../hooks/useVideoSelection'
 import { formatDuration } from '../lib/format'
@@ -18,26 +19,16 @@ const inputClass =
 export function BroadcastCreatePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [title, setTitle] = useState('')
   const [progress, setProgress] = useState<number | null>(null)
-  // 서버가 필드 오류로 알려 주지 않은 알 수 없는 실패
-  const [unknownFailure, setUnknownFailure] = useState(false)
-  // 입력란 옆에 보여 줄 메시지. 영상 메시지는 등록 시 누락 안내나 서버 응답이다.
-  // 고르는 즉시 검사한 결과(거절 이유)는 selection에서 온다.
-  const [titleError, setTitleError] = useState<string | null>(null)
-  const [videoError, setVideoError] = useState<string | null>(null)
-  // 입력란이 없는 필드(썸네일, 재생 시간)의 서버 오류
-  const [otherErrors, setOtherErrors] = useState<string[]>([])
   // 서버의 업로드 정책. 받아 오기 전이나 실패했을 때는 길이·크기를 화면에서 검사하지 않고 서버에 맡긴다.
   const { input, uploadPolicy } = useBroadcastInput()
+  const form = useBroadcastForm(input)
   const maxVideoBytes = uploadPolicy?.maxVideoBytes ?? null
   const { file, selection, select } = useVideoSelection(maxVideoBytes)
-  const videoMessage = videoError ?? (selection.status === 'invalid' ? selection.reason : null)
+  const videoMessage = form.videoError ?? (selection.status === 'invalid' ? selection.reason : null)
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setUnknownFailure(false)
-    setVideoError(null)
-    setOtherErrors([])
+    form.clearFailure()
     select(event.target.files?.[0] ?? null)
   }
 
@@ -52,19 +43,17 @@ export function BroadcastCreatePage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!canSubmit) return
-    const titleProblem = input.checkTitle(title)
-    setTitleError(titleProblem)
-    if (!file) setVideoError('영상 파일을 선택하세요')
-    if (titleProblem || !file || selection.status !== 'ready') return
-    setUnknownFailure(false)
-    setOtherErrors([])
+    form.clearFailure()
+    const titleOk = form.checkTitle()
+    if (!file) form.setVideoError('영상 파일을 선택하세요')
+    if (!titleOk || !file || selection.status !== 'ready') return
     setProgress(0)
     try {
       // 영상에서 뽑은 프레임도 라이브 썸네일과 같은 변환을 거친다. 줄여도 상한을 넘으면 썸네일 없이 등록한다.
       const thumbnail = await input.prepareThumbnail(selection.metadata.thumbnail)
       const created = await registerBroadcast(
         {
-          title,
+          title: form.title,
           video: file,
           thumbnail,
           durationSeconds: selection.metadata.durationSeconds,
@@ -75,11 +64,7 @@ export function BroadcastCreatePage() {
       navigate(`/broadcasts/${created.id}`)
     } catch (error) {
       // 입력한 제목과 고른 파일은 그대로 두어 다시 시도할 수 있게 한다.
-      const placed = input.placeFailure(decodeFailure(error))
-      setTitleError(placed.title)
-      setVideoError(placed.video)
-      setOtherErrors(placed.others)
-      setUnknownFailure(placed.unknown)
+      form.showFailure(decodeFailure(error))
       setProgress(null)
     }
   }
@@ -95,20 +80,17 @@ export function BroadcastCreatePage() {
           <input
             id="broadcast-title"
             type="text"
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value)
-              setTitleError(null)
-            }}
+            value={form.title}
+            onChange={(event) => form.changeTitle(event.target.value)}
             placeholder="방송 제목을 입력하세요"
             disabled={uploading}
-            aria-invalid={titleError !== null}
-            aria-describedby={titleError ? 'broadcast-title-error' : undefined}
+            aria-invalid={form.titleError !== null}
+            aria-describedby={form.titleError ? 'broadcast-title-error' : undefined}
             className={inputClass}
           />
-          {titleError && (
+          {form.titleError && (
             <p id="broadcast-title-error" className="text-sm text-destructive">
-              {titleError}
+              {form.titleError}
             </p>
           )}
         </div>
@@ -176,12 +158,12 @@ export function BroadcastCreatePage() {
             <p className="text-sub">업로드 중 {progress}%</p>
           </div>
         )}
-        {otherErrors.map((message) => (
+        {[form.thumbnailError, ...form.otherErrors].filter((message) => message !== null).map((message) => (
           <p key={message} role="alert" className="text-destructive">
             {message}
           </p>
         ))}
-        {unknownFailure && (
+        {form.unknown && (
           <p role="alert" className="text-destructive">
             방송을 등록하지 못했습니다. 잠시 뒤 다시 시도해 주세요.
           </p>

@@ -14,6 +14,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -67,12 +68,24 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
             MaxUploadSizeExceededException e, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        // 라이브 시작에는 영상이 없어서 올릴 수 있는 큰 파일은 썸네일뿐이다. 문구와 상한 값을 썸네일 기준으로 한다.
+        if (isLiveStart(request)) {
+            return tooLarge(e, "썸네일", RegistrationRules.MAX_THUMBNAIL_BYTES, request);
+        }
         return tooLarge(e, rules.maxVideoBytes(), request);
     }
 
+    private static boolean isLiveStart(WebRequest request) {
+        return request instanceof ServletWebRequest web && "/api/broadcasts/live".equals(web.getRequest().getRequestURI());
+    }
+
     private ResponseEntity<Object> tooLarge(Exception e, long maxBytes, WebRequest request) {
+        return tooLarge(e, "영상", maxBytes, request);
+    }
+
+    private ResponseEntity<Object> tooLarge(Exception e, String subject, long maxBytes, WebRequest request) {
         ProblemDetail problem = problem(HttpStatus.CONTENT_TOO_LARGE, "업로드 크기 초과",
-                "영상은 " + RegistrationRules.formatBytes(maxBytes) + " 이하만 올릴 수 있습니다");
+                subject + "은 " + RegistrationRules.formatBytes(maxBytes) + " 이하만 올릴 수 있습니다");
         problem.setProperty("maxBytes", maxBytes);
         return respond(e, problem, new HttpHeaders(), request);
     }

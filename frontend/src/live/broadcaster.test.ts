@@ -1,9 +1,6 @@
+import { AxiosError, type AxiosResponse } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  StartRejectedError,
-  createLiveBroadcaster,
-  type BroadcasterDeps,
-} from './broadcaster'
+import { createLiveBroadcaster, type BroadcasterDeps } from './broadcaster'
 import { START_FAILURE_MESSAGE } from './signaling-protocol'
 import type { SignalingChannel, SignalingHandlers, SignalMessage } from './signaling-protocol'
 import { createFakePeer, type FakePeer } from '../test/fakePeer'
@@ -18,6 +15,11 @@ function domError(name: string) {
   const error = new Error(name)
   error.name = name
   return error
+}
+
+/** 방송 만들기 요청에 서버가 돌려준 오류 응답. */
+function serverRejection(status: number, data: unknown) {
+  return new AxiosError('요청 실패', undefined, undefined, undefined, { status, data } as AxiosResponse)
 }
 
 /** 가짜 의존성. 서버 쪽 동작은 testing 객체로 직접 일으킨다. */
@@ -167,36 +169,49 @@ describe('송출 시작', () => {
     expect(env.startLive).toHaveBeenCalledTimes(1)
   })
 
-  it('서버가 입력을 필드별로 거절하면 필드 오류를 상태에 남긴다', async () => {
+  it('서버가 입력을 필드별로 거절하면 해독한 ApiFailure를 그대로 상태에 남긴다', async () => {
     const env = setup()
-    env.startLive.mockRejectedValueOnce(new StartRejectedError('제목 오류', { title: '제목 오류' }))
+    env.startLive.mockRejectedValueOnce(
+      serverRejection(400, { errors: [{ field: 'title', reason: '제목 오류' }] }),
+    )
     const { broadcaster } = await previewing(env)
 
     await broadcaster.start({ title: '', thumbnail: null })
 
     expect(broadcaster.state()).toMatchObject({
       phase: 'previewing',
-      startFailure: '제목 오류',
-      startFieldErrors: { title: '제목 오류' },
+      startFailure: { kind: 'invalid', fieldErrors: { title: '제목 오류' } },
     })
   })
 
-  it('방송을 만들지 못하면 미리보기로 돌아가 이유를 보여 주고 다시 시작할 수 있다', async () => {
+  it('썸네일이 너무 커서 413이면 상한 값과 문구를 담은 ApiFailure로 남긴다', async () => {
     const env = setup()
-    env.startLive.mockRejectedValueOnce(new Error('제목을 입력하세요'))
+    env.startLive.mockRejectedValueOnce(
+      serverRejection(413, { detail: '썸네일은 2MB 이하만 올릴 수 있습니다', maxBytes: 2_097_152 }),
+    )
     const { broadcaster } = await previewing(env)
 
-    await broadcaster.start({ title: '', thumbnail: null })
+    await broadcaster.start({ title: '제목', thumbnail: null })
 
     expect(broadcaster.state()).toMatchObject({
       phase: 'previewing',
-      startFailure: '제목을 입력하세요',
+      startFailure: { kind: 'tooLarge', maxBytes: 2_097_152, message: '썸네일은 2MB 이하만 올릴 수 있습니다' },
     })
+  })
+
+  it('방송을 만들지 못하면 미리보기로 돌아가 이유를 남기고 다시 시작할 수 있다', async () => {
+    const env = setup()
+    env.startLive.mockRejectedValueOnce(new Error('network'))
+    const { broadcaster } = await previewing(env)
+
+    await broadcaster.start({ title: '제목', thumbnail: null })
+
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'unknown' } })
     const retry = broadcaster.start({ title: '제목', thumbnail: null })
     await vi.waitFor(() => expect(env.sent).toHaveLength(1))
     env.server.send({ type: 'joined' })
     await retry
-    expect(broadcaster.state().phase).toBe('onAir')
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir' })
   })
 
   it.each([
@@ -214,7 +229,7 @@ describe('송출 시작', () => {
     env.server.send({ type: 'rejected', reason })
     await started
 
-    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: message })
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'message', message } })
     expect(env.close).toHaveBeenCalled()
     env.camera.tracks.forEach((track) => expect(track.stop).not.toHaveBeenCalled())
   })
@@ -229,7 +244,7 @@ describe('송출 시작', () => {
 
     await broadcaster.start({ title: '제목', thumbnail: null })
 
-    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: '연결 실패' })
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'message', message: '연결 실패' } })
   })
 
   it('송출을 시작하면 화면 꺼짐 방지 잠금을 요청한다', async () => {

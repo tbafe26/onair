@@ -1,5 +1,6 @@
 // 송출 모듈. React와 무관하고, 카메라 열기·방송 시작·시그널링 연결은 바깥에서 받는다(deps).
 // 실제로는 브라우저 API(browser-deps.ts)를, 테스트에서는 가짜를 넣는다.
+import { decodeFailure, type ApiFailure } from '../api/broadcasts'
 import { createKeepAlive, type WakeLockHandle } from './keep-alive'
 import type { PeerConnectionLike } from './peer'
 import {
@@ -21,23 +22,23 @@ export type BroadcasterState =
   | { phase: 'requestingCamera' }
   | { phase: 'cameraUnavailable'; reason: CameraUnavailableReason }
   /** startFailure는 직전 송출 시작이 실패한 이유다. 미리보기로 돌아와 다시 시도할 수 있다. */
-  | {
-      phase: 'previewing'
-      stream: MediaStream
-      startFailure: string | null
-      /** 서버가 필드별로 거절한 이유(title, thumbnail 등). 입력란 옆에 보여 준다. */
-      startFieldErrors: Readonly<Record<string, string>>
-    }
+  | { phase: 'previewing'; stream: MediaStream; startFailure: StartFailure | null }
   | { phase: 'starting'; stream: MediaStream }
   | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number; viewerCount: number; maxViewers: number | null }
   | { phase: 'ended'; broadcastId: number }
+
+/**
+ * 송출 시작이 실패한 이유. 방송 만들기 요청의 실패는 서버가 알려 준 ApiFailure 그대로이고,
+ * 시그널링 단계의 실패(연결, 송출자 거절)는 사용자에게 보여 줄 문구다.
+ */
+export type StartFailure = ApiFailure | { kind: 'message'; message: string }
 
 export type { WakeLockHandle }
 
 export interface BroadcasterDeps {
   /** 보안 컨텍스트가 아니면 카메라를 쓸 수 없으므로 null이다. */
   getUserMedia: ((constraints: MediaStreamConstraints) => Promise<MediaStream>) | null
-  /** 라이브방송을 만든다. 실패하면 사용자에게 보여 줄 메시지를 담은 Error를 던진다. */
+  /** 라이브방송을 만든다. 요청이 실패하면 그 오류를 그대로 던지고, 송출 모듈이 ApiFailure로 푼다. */
   startLive(input: { title: string; thumbnail: Blob | null }): Promise<{ id: number; streamKey: string }>
   openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel>
   /** 시청자마다 PeerConnection을 만든다. */
@@ -81,18 +82,6 @@ export interface LiveBroadcaster {
 const END_CONFIRM_TIMEOUT_MS = 5000
 const HEARTBEAT_INTERVAL_MS = 10_000
 const SWITCH_FAILURE_MESSAGE = '카메라를 바꾸지 못했습니다. 이전 카메라로 계속합니다.'
-const NO_FIELD_ERRORS: Readonly<Record<string, string>> = Object.freeze({})
-
-/** 서버가 입력(제목·썸네일)을 거절했다. fieldErrors는 필드 이름별 이유다. */
-export class StartRejectedError extends Error {
-  constructor(
-    message: string,
-    readonly fieldErrors: Readonly<Record<string, string>>,
-  ) {
-    super(message)
-    this.name = 'StartRejectedError'
-  }
-}
 
 function classifyCameraError(error: unknown): CameraUnavailableReason {
   const name = error instanceof DOMException || error instanceof Error ? error.name : ''
@@ -215,7 +204,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         stopTracks(stream)
         return
       }
-      set({ phase: 'previewing', stream, startFailure: null, startFieldErrors: NO_FIELD_ERRORS })
+      set({ phase: 'previewing', stream, startFailure: null })
       void detectCameras(session)
     } catch (error) {
       if (session !== generation) return
@@ -301,7 +290,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         return
       }
       camera = { ...camera, facing, switching: false, switchFailure: failure }
-      set({ phase: 'previewing', stream: next, startFailure: null, startFieldErrors: NO_FIELD_ERRORS })
+      set({ phase: 'previewing', stream: next, startFailure: null })
     },
 
     subscribe(listener) {
@@ -325,9 +314,15 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       const session = generation
       const { stream } = current
       set({ phase: 'starting', stream })
+      let started: { id: number; streamKey: string }
       try {
-        const started = await deps.startLive(input)
-        if (session !== generation) return
+        started = await deps.startLive(input)
+      } catch (error) {
+        if (session === generation) set({ phase: 'previewing', stream, startFailure: decodeFailure(error) })
+        return
+      }
+      if (session !== generation) return
+      try {
         await joinAsBroadcaster(started.id, started.streamKey)
         if (session !== generation) return
         set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0, maxViewers: null })
@@ -336,8 +331,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         closeChannel()
         if (session !== generation) return
         const message = error instanceof Error && error.message ? error.message : START_FAILURE_MESSAGE
-        const startFieldErrors = error instanceof StartRejectedError ? error.fieldErrors : NO_FIELD_ERRORS
-        set({ phase: 'previewing', stream, startFailure: message, startFieldErrors })
+        set({ phase: 'previewing', stream, startFailure: { kind: 'message', message } })
       }
     },
 
