@@ -6,6 +6,7 @@ export type ViewerState =
   | { phase: 'connecting' }
   | { phase: 'playing'; stream: MediaStream }
   | { phase: 'ended' }
+  | { phase: 'full' }
   | { phase: 'failed' }
 
 export interface ViewerDeps {
@@ -48,8 +49,8 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
   }
 
   /** 끝났거나 실패했다. 연결을 정리하고 해당 상태로 바꾼다. 이미 끝난 뒤에는 바꾸지 않는다. */
-  function settle(next: { phase: 'ended' } | { phase: 'failed' }) {
-    if (current.phase === 'ended' || current.phase === 'failed') return
+  function settle(next: { phase: 'ended' } | { phase: 'failed' } | { phase: 'full' }) {
+    if (current.phase === 'ended' || current.phase === 'failed' || current.phase === 'full') return
     teardown()
     set(next)
   }
@@ -105,8 +106,14 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
         break
       }
       case 'rejected':
-        // 이미 끝난 방송이면 종료 안내를, 그 밖의 거절은 연결 실패로 보여 준다.
-        settle(message.reason === 'ended' ? { phase: 'ended' } : { phase: 'failed' })
+        // 이미 끝난 방송이면 종료 안내를, 정원이 찼으면 상한 안내를, 그 밖의 거절은 연결 실패로 보여 준다.
+        settle(
+          message.reason === 'ended'
+            ? { phase: 'ended' }
+            : message.reason === 'full'
+              ? { phase: 'full' }
+              : { phase: 'failed' },
+        )
         break
       case 'ended':
         settle({ phase: 'ended' })

@@ -280,3 +280,15 @@ it('송출 중에는 현재 시청자 수를 보여 주고, 시청자가 드나�
   expect(await screen.findByText('시청자 1명')).toBeInTheDocument()
   expect(fake.peers.map((peer) => peer.closed)).toEqual([true, false])
 })
+
+it('상한을 받으면 시청자 수를 현재/상한으로 보여 준다', async () => {
+  const user = userEvent.setup()
+  renderApp('/broadcasts/live/new')
+  await startOnAir(user)
+
+  act(() => {
+    fake.handlers?.onMessage({ type: 'viewer-count', count: 3, max: 5 })
+  })
+
+  expect(await screen.findByText('시청자 3/5')).toBeInTheDocument()
+})

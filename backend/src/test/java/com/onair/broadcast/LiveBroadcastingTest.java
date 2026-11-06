@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /** 송출 모듈을 interface(start, joinAsBroadcaster, relay, leave)로만 검증한다. 상대는 기록용 Peer다. */
 class LiveBroadcastingTest extends ApiTestSupport {
@@ -17,6 +20,19 @@ class LiveBroadcastingTest extends ApiTestSupport {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    MediaStorage storage;
+
+    @Autowired
+    RegistrationRules rules;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
+
+    LiveBroadcasting 상한이_있는_모듈(int maxViewers) {
+        return new LiveBroadcasting(repository, storage, rules, transactionManager, clock, maxViewers);
+    }
 
     StartedLive 시작한다(String title) {
         return live.start(new StartLiveCommand(title, null));
@@ -344,6 +360,71 @@ class LiveBroadcastingTest extends ApiTestSupport {
 
         assertThat(again.rejection()).isEqualTo(JoinResult.Rejection.ALREADY_JOINED);
         assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 1);
+    }
+
+    @Test
+    void 시청자_수가_상한까지는_입장하고_시청자_수에_상한이_함께_간다() {
+        OnAir onAir = 송출을_시작한다("상한까지");
+
+        for (int i = 0; i < 5; i++) {
+            assertThat(live.joinAsViewer(onAir.started().broadcastId(), new RecordingPeer()).isAccepted()).isTrue();
+        }
+
+        assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 5).containsEntry("max", 5);
+    }
+
+    @Test
+    void 상한을_넘는_입장은_full로_거절되고_기존_시청자는_영향이_없다() {
+        OnAir onAir = 송출을_시작한다("상한 초과");
+        List<RecordingPeer> viewers = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            RecordingPeer viewer = new RecordingPeer();
+            입장한다(onAir, viewer);
+            viewers.add(viewer);
+        }
+        onAir.broadcaster().received.clear();
+        RecordingPeer late = new RecordingPeer();
+
+        JoinResult result = live.joinAsViewer(onAir.started().broadcastId(), late);
+
+        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.FULL);
+        assertThat(late.types()).containsExactly("rejected");
+        assertThat(late.last().text("reason")).isEqualTo("full");
+        assertThat(late.closed).isTrue();
+        assertThat(onAir.broadcaster().received).isEmpty();
+        assertThat(viewers).allSatisfy(viewer -> assertThat(viewer.closed).isFalse());
+    }
+
+    @Test
+    void 시청자가_나가면_자리가_나서_다시_입장할_수_있다() {
+        OnAir onAir = 송출을_시작한다("퇴장 후 재입장");
+        RecordingPeer first = new RecordingPeer();
+        입장한다(onAir, first);
+        for (int i = 0; i < 4; i++) {
+            입장한다(onAir, new RecordingPeer());
+        }
+        assertThat(live.joinAsViewer(onAir.started().broadcastId(), new RecordingPeer()).rejection())
+                .isEqualTo(JoinResult.Rejection.FULL);
+
+        live.leave(first);
+        JoinResult again = live.joinAsViewer(onAir.started().broadcastId(), new RecordingPeer());
+
+        assertThat(again.isAccepted()).isTrue();
+        assertThat(onAir.broadcaster().last().fields()).containsEntry("count", 5);
+    }
+
+    @Test
+    void 설정한_상한이_적용된다() {
+        LiveBroadcasting limited = 상한이_있는_모듈(2);
+        StartedLive started = limited.start(new StartLiveCommand("상한 설정", null));
+        RecordingPeer broadcaster = new RecordingPeer();
+        limited.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+
+        assertThat(limited.joinAsViewer(started.broadcastId(), new RecordingPeer()).isAccepted()).isTrue();
+        assertThat(limited.joinAsViewer(started.broadcastId(), new RecordingPeer()).isAccepted()).isTrue();
+        assertThat(limited.joinAsViewer(started.broadcastId(), new RecordingPeer()).rejection())
+                .isEqualTo(JoinResult.Rejection.FULL);
+        assertThat(broadcaster.last().fields()).containsEntry("count", 2).containsEntry("max", 2);
     }
 
     @Test
