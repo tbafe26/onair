@@ -27,6 +27,11 @@ public final class AuthenticatedUser implements UserDetails, CredentialsContaine
         return id;
     }
 
+    /** 컨트롤러가 요청한 사용자의 id를 모듈에 넘길 때 쓴다. 로그인하지 않았으면 null이다. */
+    public static Long idOf(AuthenticatedUser user) {
+        return user == null ? null : user.id;
+    }
+
     public UserInfo info() {
         return new UserInfo(id, loginId, nickname);
     }

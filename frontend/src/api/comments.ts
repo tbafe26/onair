@@ -21,7 +21,7 @@ export interface CommentPage {
   totalCount: number
 }
 
-/** 서버의 댓글 길이 상한. 서버와 같은 값으로 미리 검사해 남은 글자 수를 보여 준다. */
+/** 서버의 댓글 길이 상한. 서버와 같은 값으로 미리 검사해 남은 글자 수를 보여 준다. contracts/chat.json과 같아야 하고, chat-protocol.test.ts가 대조한다. */
 export const MAX_COMMENT_LENGTH = 300
 
 export const commentKeys = {

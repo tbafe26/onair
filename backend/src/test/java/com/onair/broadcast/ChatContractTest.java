@@ -49,6 +49,11 @@ class ChatContractTest extends ApiTestSupport {
     }
 
     @Test
+    void 댓글_길이_상한은_계약과_같다() {
+        assertThat(Comment.MAX_LENGTH).isEqualTo(contract.get("commentMaxLength").asInt());
+    }
+
+    @Test
     void 채팅_메시지에_실린_댓글의_JSON_필드는_계약과_같다() {
         long id = live.start(new StartLiveCommand("계약", null), owner().userId()).broadcastId();
         RecordingSubscriber subscriber = new RecordingSubscriber();

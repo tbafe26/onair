@@ -51,7 +51,7 @@ class MyBroadcastsApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[0].title").value("내 라이브"))
                 .andExpect(jsonPath("$.items[0].kind").value("LIVE"))
-                .andExpect(jsonPath("$.items[0].owner.nickname").value("방장"))
+                .andExpect(jsonPath("$.items[0].owner.nickname").value("소유자닉"))
                 .andExpect(jsonPath("$.items[1].title").value("내 녹화"))
                 .andExpect(jsonPath("$.hasNext").value(false));
     }

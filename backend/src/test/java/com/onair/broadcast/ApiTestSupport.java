@@ -48,7 +48,7 @@ public abstract class ApiTestSupport {
     protected AuthClient owner() {
         if (owner == null) {
             try {
-                owner = AuthClient.signedUp(mockMvc, "owner01", "방장");
+                owner = AuthClient.signedUp(mockMvc, "owner01", "소유자닉");
             } catch (Exception e) {
                 throw new IllegalStateException("테스트 사용자를 가입시키지 못했다", e);
             }

@@ -201,7 +201,7 @@ it('상세 화면을 떠나면 시청 모듈을 정리한다', async () => {
 it('라이브방송 상세에 소유자 닉네임을 보여 준다', async () => {
   server.use(
     http.get('/api/broadcasts/5', () =>
-      HttpResponse.json({ ...liveDetail('ENDED', '2026-03-15T13:00:00Z'), owner: { id: 9, nickname: '채널주인' } }),
+      HttpResponse.json({ ...liveDetail('ENDED', '2026-03-15T13:00:00Z'), owner: { id: 9, nickname: '소유자닉' } }),
     ),
     http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
   )
@@ -209,7 +209,7 @@ it('라이브방송 상세에 소유자 닉네임을 보여 준다', async () =>
   renderApp('/broadcasts/5')
 
   await screen.findByRole('heading', { name: '상세 라이브' })
-  expect(screen.getByText('채널주인')).toBeInTheDocument()
+  expect(screen.getByText('소유자닉')).toBeInTheDocument()
 })
 
 it('소유자의 방송 중 상세에는 송출 종료 버튼이 있고, 확인하면 종료 상태로 바뀐다', async () => {

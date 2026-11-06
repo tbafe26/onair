@@ -28,7 +28,7 @@ function stubLive(status: 'ON_AIR' | 'ENDED' = 'ON_AIR') {
         kind: 'LIVE',
         title: '채팅 라이브',
         createdAt: '2026-03-15T12:00:00Z',
-        owner: { id: 9, nickname: '주인' },
+        owner: { id: 9, nickname: '소유자닉' },
         thumbnailUrl: null,
         status,
         endedAt: status === 'ENDED' ? '2026-03-15T13:00:00Z' : null,

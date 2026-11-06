@@ -237,7 +237,7 @@ it('방송 카드에 소유자 닉네임을 보여 준다', async () => {
             kind: 'RECORDING',
             title: '닉네임 방송',
             createdAt: '2026-03-15T12:00:00Z',
-            owner: { id: 7, nickname: '채널주인' },
+            owner: { id: 7, nickname: '소유자닉' },
             durationSeconds: 10,
             thumbnailUrl: null,
           },
@@ -250,5 +250,5 @@ it('방송 카드에 소유자 닉네임을 보여 준다', async () => {
   renderApp('/')
 
   const card = (await screen.findByText('닉네임 방송')).closest('a')!
-  expect(within(card).getByText('채널주인')).toBeInTheDocument()
+  expect(within(card).getByText('소유자닉')).toBeInTheDocument()
 })

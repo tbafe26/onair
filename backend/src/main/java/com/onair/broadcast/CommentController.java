@@ -38,14 +38,14 @@ class CommentController {
             @RequestBody(required = false) CommentRequest request,
             @AuthenticationPrincipal AuthenticatedUser user) {
         CommentView created = comments.write(
-                id, user == null ? null : user.id(), request == null ? null : request.content());
+                id, AuthenticatedUser.idOf(user), request == null ? null : request.content());
         return ResponseEntity.created(URI.create("/api/broadcasts/" + id + "/comments")).body(created);
     }
 
     @DeleteMapping("/{commentId}")
     ResponseEntity<Void> delete(
             @PathVariable long id, @PathVariable long commentId, @AuthenticationPrincipal AuthenticatedUser user) {
-        comments.delete(id, commentId, user == null ? null : user.id());
+        comments.delete(id, commentId, AuthenticatedUser.idOf(user));
         return ResponseEntity.noContent().build();
     }
 

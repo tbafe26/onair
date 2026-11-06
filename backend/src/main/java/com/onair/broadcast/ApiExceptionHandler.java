@@ -1,7 +1,6 @@
 package com.onair.broadcast;
 
-import com.onair.auth.DuplicateLoginIdException;
-import com.onair.auth.InvalidCredentialsException;
+import com.onair.api.ApiException;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -34,7 +33,7 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(InvalidRequestException.class)
     ResponseEntity<Object> handleInvalid(InvalidRequestException e, WebRequest request) {
-        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "잘못된 입력", e.getMessage());
+        ProblemDetail problem = problem(e.status(), e.title(), e.getMessage());
         List<Map<String, String>> errors = e.violations().stream()
                 .map(v -> Map.of("field", v.field(), "reason", v.reason()))
                 .toList();
@@ -42,64 +41,10 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return respond(e, problem, new HttpHeaders(), request);
     }
 
-    @ExceptionHandler(DuplicateLoginIdException.class)
-    ResponseEntity<Object> handleDuplicateLoginId(DuplicateLoginIdException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.CONFLICT, "아이디 중복", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(InvalidCredentialsException.class)
-    ResponseEntity<Object> handleInvalidCredentials(InvalidCredentialsException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.UNAUTHORIZED, "로그인 실패", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(AuthenticationRequiredException.class)
-    ResponseEntity<Object> handleAuthenticationRequired(AuthenticationRequiredException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.UNAUTHORIZED, "로그인 필요", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(BroadcastForbiddenException.class)
-    ResponseEntity<Object> handleForbidden(BroadcastForbiddenException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.FORBIDDEN, "권한 없음", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(LiveOnAirException.class)
-    ResponseEntity<Object> handleLiveOnAir(LiveOnAirException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.CONFLICT, "방송 중", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(ChatClosedException.class)
-    ResponseEntity<Object> handleChatClosed(ChatClosedException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.CONFLICT, "채팅 종료", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(ChatNotDeletableException.class)
-    ResponseEntity<Object> handleChatNotDeletable(ChatNotDeletableException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.CONFLICT, "채팅 삭제 불가", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(NotLiveBroadcastException.class)
-    ResponseEntity<Object> handleNotLive(NotLiveBroadcastException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.CONFLICT, "라이브방송 아님", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(BroadcastNotFoundException.class)
-    ResponseEntity<Object> handleNotFound(BroadcastNotFoundException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.NOT_FOUND, "방송 없음", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(CommentForbiddenException.class)
-    ResponseEntity<Object> handleCommentForbidden(CommentForbiddenException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.FORBIDDEN, "권한 없음", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(CommentNotFoundException.class)
-    ResponseEntity<Object> handleCommentNotFound(CommentNotFoundException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.NOT_FOUND, "댓글 없음", e.getMessage()), new HttpHeaders(), request);
-    }
-
-    @ExceptionHandler(ThumbnailNotFoundException.class)
-    ResponseEntity<Object> handleThumbnailNotFound(ThumbnailNotFoundException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.NOT_FOUND, "썸네일 없음", "이 방송에는 썸네일이 없습니다"), new HttpHeaders(), request);
+    // 상태 코드와 제목은 예외가 지닌다.
+    @ExceptionHandler(ApiException.class)
+    ResponseEntity<Object> handleApi(ApiException e, WebRequest request) {
+        return respond(e, problem(e.status(), e.title(), e.getMessage()), new HttpHeaders(), request);
     }
 
     // 숫자가 아닌 방송 id(/api/broadcasts/abc)는 없는 방송과 같은 404다. 다른 인자의 타입 오류는 기본 처리(400)를 따른다.
@@ -111,11 +56,6 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                     "방송을 찾을 수 없습니다: " + mismatch.getValue()), new HttpHeaders(), request);
         }
         return super.handleTypeMismatch(e, headers, status, request);
-    }
-
-    @ExceptionHandler(MediaFileMissingException.class)
-    ResponseEntity<Object> handleMediaMissing(MediaFileMissingException e, WebRequest request) {
-        return respond(e, problem(HttpStatus.NOT_FOUND, "파일 없음", "저장된 파일을 찾을 수 없습니다"), new HttpHeaders(), request);
     }
 
     @ExceptionHandler(UploadTooLargeException.class)
