@@ -8,6 +8,7 @@
 - 스펙 파일은 `.scratch/<feature-slug>/spec.md`
 - 구현 이슈는 티켓 하나당 파일 하나로 `.scratch/<feature-slug>/issues/<NN>-<slug>.md`에 두고, 번호는 `01`부터 매깁니다. 여러 티켓을 한 파일에 몰아 쓰지 않습니다.
 - 트리아지 상태는 각 이슈 파일 상단 근처의 `Status:` 줄에 기록합니다 (역할 문자열은 `triage-labels.md` 참고).
+- 휴대폰·브라우저로 사람이 직접 하는 확인은 단계의 마지막 티켓(README·릴리스)에 모읍니다. 다른 티켓의 완료 조건은 자동 테스트와 에이전트가 할 수 있는 확인(API 호출, `pnpm dev:local` 화면)으로 둡니다.
 - 댓글과 대화 기록은 파일 맨 아래 `## Comments` 제목 아래에 이어 붙입니다.
 
 ## GitHub 이슈
