@@ -181,6 +181,15 @@ it('목록에는 방송 중이었지만 이미 끝난 방송이면 종료 문구
   expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
 })
 
+it('시청자가 가득 찼으면 상한 안내 문구가 나온다', async () => {
+  await openOnAir()
+
+  serverSends({ type: 'rejected', reason: 'full' })
+
+  expect(await screen.findByText('시청자가 많아 지금은 볼 수 없습니다')).toBeInTheDocument()
+  expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
+})
+
 it('연결에 실패하면 실패 문구가 나온다', async () => {
   await openOnAir()
 

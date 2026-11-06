@@ -10,7 +10,7 @@ export type BroadcasterState =
   /** startFailure는 직전 송출 시작이 실패한 이유다. 미리보기로 돌아와 다시 시도할 수 있다. */
   | { phase: 'previewing'; stream: MediaStream; startFailure: string | null }
   | { phase: 'starting'; stream: MediaStream }
-  | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number; viewerCount: number }
+  | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number; viewerCount: number; maxViewers: number | null }
   | { phase: 'ended'; broadcastId: number }
 
 export interface SignalMessage {
@@ -267,7 +267,10 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
               finish(current.broadcastId)
             } else if (message.type === 'viewer-count' && current.phase === 'onAir') {
               const count = message.count
-              if (typeof count === 'number') set({ ...current, viewerCount: count })
+              const max = message.max
+              if (typeof count === 'number') {
+                set({ ...current, viewerCount: count, maxViewers: typeof max === 'number' ? max : current.maxViewers })
+              }
             } else {
               handleViewerMessage(message)
             }
@@ -321,7 +324,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         if (session !== generation) return
         await joinAsBroadcaster(started.id, started.streamKey)
         if (session !== generation) return
-        set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0 })
+        set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0, maxViewers: null })
         startKeepAlive(session)
         acquireWakeLock(session)
       } catch (error) {

@@ -34,6 +34,10 @@ public record SignalMessage(String type, Map<String, Object> fields) {
         return new SignalMessage(type, Map.of(field, value));
     }
 
+    public static SignalMessage of(String type, String field1, Object value1, String field2, Object value2) {
+        return new SignalMessage(type, Map.of(field1, value1, field2, value2));
+    }
+
     /** 문자열 필드. 없거나 문자열이 아니면 null이다. */
     public String text(String field) {
         return fields.get(field) instanceof String value ? value : null;

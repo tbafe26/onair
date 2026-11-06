@@ -102,6 +102,15 @@ describe('시청 연결', () => {
     expect(missing.viewer.state()).toEqual({ phase: 'failed' })
   })
 
+  it('정원이 차서 거절되면 full이 되고 연결을 정리한다', async () => {
+    const { env, viewer } = await joined()
+
+    env.server.send({ type: 'rejected', reason: 'full' })
+
+    expect(viewer.state()).toEqual({ phase: 'full' })
+    expect(env.close).toHaveBeenCalled()
+  })
+
   it('시그널링에 연결하지 못하면 failed다', async () => {
     const env = setup({
       openSignaling: vi.fn(async () => {

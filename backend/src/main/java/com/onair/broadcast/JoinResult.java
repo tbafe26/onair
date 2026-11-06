@@ -10,7 +10,8 @@ public record JoinResult(Rejection rejection) {
         ENDED("ended"),
         NOT_FOUND("not-found"),
         NOT_BROADCASTING("not-broadcasting"),
-        ALREADY_JOINED("already-joined");
+        ALREADY_JOINED("already-joined"),
+        FULL("full");
 
         private final String reason;
 

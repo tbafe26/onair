@@ -129,6 +129,7 @@ function LiveViewer({ broadcastId }: { broadcastId: number }) {
 
   if (viewer.phase === 'connecting') return <LiveStatusBox text="연결 중…" />
   if (viewer.phase === 'ended') return <LiveStatusBox text={ENDED_TEXT} />
+  if (viewer.phase === 'full') return <LiveStatusBox text="시청자가 많아 지금은 볼 수 없습니다" />
   if (viewer.phase === 'failed') {
     return <LiveStatusBox text="연결하지 못했습니다. 잠시 뒤 새로고침해 다시 시도해 주세요." />
   }

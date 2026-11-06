@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -33,6 +34,7 @@ public class LiveBroadcasting {
     private final RegistrationRules rules;
     private final TransactionTemplate transaction;
     private final Clock clock;
+    private final int maxViewers;
 
     // 방송 id → 송출자 연결, 연결 → 방송 id. this 잠금으로 보호한다.
     private final Map<Long, Peer> broadcasters = new HashMap<>();
@@ -57,8 +59,10 @@ public class LiveBroadcasting {
             MediaStorage storage,
             RegistrationRules rules,
             PlatformTransactionManager transactionManager,
-            Clock clock) {
+            Clock clock,
+            @Value("${app.live.max-viewers:5}") int maxViewers) {
         this.clock = clock;
+        this.maxViewers = maxViewers;
         this.repository = repository;
         this.storage = storage;
         this.rules = rules;
@@ -96,7 +100,7 @@ public class LiveBroadcasting {
     }
 
     /**
-     * 시청자로 연결한다. 방송이 없거나, 종료됐거나, 송출자가 아직 연결되지 않았으면 거절한다.
+     * 시청자로 연결한다. 방송이 없거나, 종료됐거나, 송출자가 아직 연결되지 않았으면 거절하고, 동시 시청자가 상한에 이르렀으면 full로 거절한다.
      * 받아들이면 시청자 번호를 부여해 시청자에게 joined를, 송출자에게 viewer-joined와 viewer-count를 보낸다.
      */
     public synchronized JoinResult joinAsViewer(long broadcastId, Peer peer) {
@@ -230,7 +234,7 @@ public class LiveBroadcasting {
         int count = room == null ? 0 : room.size();
         Peer broadcaster = broadcasters.get(broadcastId);
         if (broadcaster != null) {
-            broadcaster.send(SignalMessage.of(SignalMessage.VIEWER_COUNT, "count", count));
+            broadcaster.send(SignalMessage.of(SignalMessage.VIEWER_COUNT, "count", count, "max", maxViewers));
         }
     }
 
@@ -254,6 +258,10 @@ public class LiveBroadcasting {
         }
         if (seats.containsKey(peer) || broadcastIds.containsKey(peer)) {
             return JoinResult.rejected(JoinResult.Rejection.ALREADY_JOINED);
+        }
+        Map<String, Peer> room = viewers.get(broadcastId);
+        if (room != null && room.size() >= maxViewers) {
+            return JoinResult.rejected(JoinResult.Rejection.FULL);
         }
         return JoinResult.accepted();
     }

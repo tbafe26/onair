@@ -451,6 +451,15 @@ describe('시청자 연결', () => {
     expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 3 })
   })
 
+  it('viewer-count의 상한을 maxViewers로 기억한다', async () => {
+    const { broadcaster, env } = await onAir()
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', maxViewers: null })
+
+    env.server.send({ type: 'viewer-count', count: 3, max: 5 })
+
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 3, maxViewers: 5 })
+  })
+
   it('시청자가 들어오면 그 시청자 몫의 연결을 만들어 내 영상을 싣고 offer를 보낸다', async () => {
     const { env } = await withViewers('1')
 
