@@ -28,11 +28,13 @@ class BroadcastService {
     private final MediaStorage storage;
     private final RegistrationRules rules;
     private final AppUserRepository users;
+    private final Comments comments;
     private final Clock clock = Clock.systemUTC();
     private final TransactionTemplate transaction;
 
     BroadcastService(BroadcastRepository repository, MediaStorage storage, RegistrationRules rules,
-            AppUserRepository users, PlatformTransactionManager transactionManager) {
+            AppUserRepository users, Comments comments, PlatformTransactionManager transactionManager) {
+        this.comments = comments;
         this.transaction = new TransactionTemplate(transactionManager);
         this.users = users;
         this.repository = repository;
@@ -104,6 +106,7 @@ class BroadcastService {
             if (broadcast.thumbnailKey() != null) {
                 fileKeys.add(broadcast.thumbnailKey());
             }
+            comments.deleteAllOf(id);
             repository.delete(broadcast);
             return fileKeys;
         });
