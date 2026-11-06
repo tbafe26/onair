@@ -64,6 +64,13 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
   now: () => Date.now(),
   requestWakeLock:
     'wakeLock' in navigator ? () => navigator.wakeLock.request('screen') : undefined,
+  watchVisible: (listener) => {
+    const onChange = () => {
+      if (document.visibilityState === 'visible') listener()
+    }
+    document.addEventListener('visibilitychange', onChange)
+    return () => document.removeEventListener('visibilitychange', onChange)
+  },
 }
 
 /** 실제 브라우저 API를 시청 모듈에 연결한다. */

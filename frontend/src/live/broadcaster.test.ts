@@ -219,6 +219,151 @@ describe('송출 시작', () => {
   })
 })
 
+describe('생존 신호와 화면 꺼짐 방지', () => {
+  const heartbeats = (env: ReturnType<typeof setup>) => env.sent.filter((message) => message.type === 'heartbeat')
+
+  it('송출 중에는 10초마다 heartbeat를 보낸다', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { env } = await onAir()
+      expect(heartbeats(env)).toHaveLength(0)
+
+      vi.advanceTimersByTime(9_999)
+      expect(heartbeats(env)).toHaveLength(0)
+      vi.advanceTimersByTime(1)
+      expect(heartbeats(env)).toHaveLength(1)
+      vi.advanceTimersByTime(20_000)
+      expect(heartbeats(env)).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('송출이 끝나거나 화면을 떠나면 heartbeat를 멈춘다', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const first = await onAir()
+      expect(vi.getTimerCount()).toBe(1)
+      first.env.server.closeConnection()
+      expect(vi.getTimerCount()).toBe(0)
+      expect(heartbeats(first.env)).toHaveLength(0)
+
+      const second = await onAir()
+      expect(vi.getTimerCount()).toBe(1)
+      second.broadcaster.dispose()
+      expect(vi.getTimerCount()).toBe(0)
+      expect(heartbeats(second.env)).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('송출 시작 전에는 heartbeat를 보내지 않는다', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { env } = await previewing()
+      vi.advanceTimersByTime(30_000)
+      expect(env.sent).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('화면 꺼짐 방지를 지원하지 않는 브라우저에서도 송출은 정상이다', async () => {
+    const { broadcaster, env } = await previewing(setup({ requestWakeLock: undefined, watchVisible: undefined }))
+    const started = broadcaster.start({ title: '제목', thumbnail: null })
+    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+    env.server.send({ type: 'joined' })
+    await started
+
+    expect(broadcaster.state().phase).toBe('onAir')
+    broadcaster.dispose()
+  })
+
+  it('화면 꺼짐 방지 요청이 거절돼도 송출은 계속된다', async () => {
+    const { broadcaster, env } = await previewing(
+      setup({ requestWakeLock: vi.fn(async () => Promise.reject(new Error('denied'))) }),
+    )
+    const started = broadcaster.start({ title: '제목', thumbnail: null })
+    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+    env.server.send({ type: 'joined' })
+    await started
+
+    expect(broadcaster.state().phase).toBe('onAir')
+  })
+
+  it('화면이 다시 보이면 잠금을 다시 요청하고, 송출이 끝나면 구독을 푼다', async () => {
+    let onVisible = () => {}
+    const unwatch = vi.fn()
+    const request = vi.fn(async () => ({ release: vi.fn(async () => undefined) }))
+    const { broadcaster, env } = await previewing(
+      setup({
+        requestWakeLock: request,
+        watchVisible: (listener) => {
+          onVisible = listener
+          return unwatch
+        },
+      }),
+    )
+    const started = broadcaster.start({ title: '제목', thumbnail: null })
+    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+    env.server.send({ type: 'joined' })
+    await started
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+
+    onVisible()
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+
+    env.server.closeConnection()
+    expect(unwatch).toHaveBeenCalled()
+  })
+
+  it('다시 요청해 얻은 새 잠금도 송출이 끝나면 풀고, 이전 잠금은 새 잠금으로 바꿀 때 푼다', async () => {
+    let onVisible = () => {}
+    const releases = [vi.fn(async () => undefined), vi.fn(async () => undefined)]
+    const request = vi.fn(async () => ({ release: releases[request.mock.calls.length - 1] }))
+    const { broadcaster, env } = await previewing(
+      setup({
+        requestWakeLock: request,
+        watchVisible: (listener) => {
+          onVisible = listener
+          return () => {}
+        },
+      }),
+    )
+    const started = broadcaster.start({ title: '제목', thumbnail: null })
+    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+    env.server.send({ type: 'joined' })
+    await started
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+    onVisible()
+    await vi.waitFor(() => expect(releases[0]).toHaveBeenCalled())
+
+    broadcaster.dispose()
+
+    await vi.waitFor(() => expect(releases[1]).toHaveBeenCalled())
+  })
+
+  it('송출 중이 아닐 때 화면이 보여도 잠금을 요청하지 않는다', async () => {
+    let onVisible = () => {}
+    const request = vi.fn(async () => ({ release: vi.fn(async () => undefined) }))
+    const { broadcaster } = await previewing(
+      setup({
+        requestWakeLock: request,
+        watchVisible: (listener) => {
+          onVisible = listener
+          return () => {}
+        },
+      }),
+    )
+
+    onVisible()
+
+    expect(request).not.toHaveBeenCalled()
+    expect(broadcaster.state().phase).toBe('previewing')
+  })
+})
+
 describe('송출 종료', () => {
   it('end를 보내고 서버가 ended로 확인하면 카메라와 마이크를 끄고 ended가 된다', async () => {
     const { broadcaster, env } = await onAir()
