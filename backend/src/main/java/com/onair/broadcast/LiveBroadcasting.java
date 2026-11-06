@@ -166,13 +166,42 @@ public class LiveBroadcasting {
             }
         }
         for (long broadcastId : silent) {
-            Optional<Peer> broadcaster = rooms.broadcasterOf(broadcastId);
-            finish(broadcastId);
-            broadcaster.ifPresent(b -> {
-                b.send(SignalMessage.of(SignalMessage.ENDED));
-                b.close();
-            });
+            finishAndNotifyBroadcaster(broadcastId);
         }
+    }
+
+    /**
+     * 소유자의 요청으로 방송 중인 라이브방송을 종료한다. 로그인(401), 방송 존재(404), 소유자(403), 라이브방송(409) 순으로 확인한다.
+     * 이미 종료됐으면 아무 일도 하지 않는다. 종료하면 시청자와 송출자에게 ended를 보내고 연결을 닫는다.
+     * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
+     */
+    public synchronized void endByOwner(long broadcastId, Long userId) {
+        if (userId == null) {
+            throw new AuthenticationRequiredException();
+        }
+        Boolean onAir = transaction.execute(status -> {
+            Broadcast broadcast = repository.findById(broadcastId)
+                    .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
+            if (!broadcast.isOwnedBy(userId)) {
+                throw new BroadcastForbiddenException(broadcastId);
+            }
+            if (!(broadcast instanceof LiveBroadcast live)) {
+                throw new NotLiveBroadcastException(broadcastId);
+            }
+            return live.isOnAir();
+        });
+        if (Boolean.TRUE.equals(onAir)) {
+            finishAndNotifyBroadcaster(broadcastId);
+        }
+    }
+
+    private void finishAndNotifyBroadcaster(long broadcastId) {
+        Optional<Peer> broadcaster = rooms.broadcasterOf(broadcastId);
+        finish(broadcastId);
+        broadcaster.ifPresent(b -> {
+            b.send(SignalMessage.of(SignalMessage.ENDED));
+            b.close();
+        });
     }
 
     /**

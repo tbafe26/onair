@@ -50,13 +50,19 @@ export function BroadcastDetailPage() {
 }
 
 /** 소유자에게만 "제목 수정"·"삭제"를 보여 준다. 화면에서 숨기는 것은 보조 수단이고 권한은 서버가 검사한다. */
-function OwnerActions({ broadcast }: { broadcast: { id: number; title: string; owner: { id: number } } }) {
+function OwnerActions({
+  broadcast,
+  onAir = false,
+}: {
+  broadcast: { id: number; title: string; owner: { id: number } }
+  onAir?: boolean
+}) {
   const { state } = useAuth()
   const navigate = useNavigate()
   if (state.status !== 'user' || state.user.id !== broadcast.owner.id) return null
   return (
     <div className="mt-3 flex gap-2">
-      <BroadcastOwnerActions broadcast={broadcast} onDeleted={() => void navigate('/')} />
+      <BroadcastOwnerActions broadcast={broadcast} onAir={onAir} onDeleted={() => void navigate('/')} />
     </div>
   )
 }
@@ -116,7 +122,7 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
               종료 <time dateTime={data.endedAt}>{formatDateTime(data.endedAt)}</time>
             </p>
           )}
-          <OwnerActions broadcast={data} />
+          <OwnerActions broadcast={data} onAir={onAir} />
         </div>
       </section>
       <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">

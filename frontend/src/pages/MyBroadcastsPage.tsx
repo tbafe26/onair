@@ -106,7 +106,10 @@ export function MyBroadcastsPage() {
                   </td>
                   <td className="py-3">
                     <div className="flex gap-2">
-                      <BroadcastOwnerActions broadcast={broadcast} />
+                      <BroadcastOwnerActions
+                        broadcast={broadcast}
+                        onAir={broadcast.kind === 'LIVE' && broadcast.status === 'ON_AIR'}
+                      />
                     </div>
                   </td>
                 </tr>

@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -70,6 +71,10 @@ class ManageBroadcastApiTest extends ApiTestSupport {
 
     ResultActions 지운다(Actor actor, Object id) throws Exception {
         return mockMvc.perform(delete("/api/broadcasts/{id}", id).with(actor.credentials()));
+    }
+
+    ResultActions 종료한다(Actor actor, Object id) throws Exception {
+        return mockMvc.perform(post("/api/broadcasts/{id}/end", id).with(actor.credentials()));
     }
 
     long 저장된_파일_수() throws IOException {
@@ -192,5 +197,37 @@ class ManageBroadcastApiTest extends ApiTestSupport {
         mockMvc.perform(get("/api/broadcasts/{id}", mine))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("내 방송"));
+    }
+
+    @Test
+    void 송출_종료는_소유자만_할_수_있다() throws Exception {
+        int id = 라이브방송을_시작한다("종료할 라이브");
+
+        종료한다(비로그인(), id).andExpect(status().isUnauthorized());
+        종료한다(다른_사용자(), id).andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("select status from live_broadcast where id = ?", String.class, id))
+                .isEqualTo("ON_AIR");
+
+        종료한다(소유자(), id).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("select status from live_broadcast where id = ?", String.class, id))
+                .isEqualTo("ENDED");
+    }
+
+    @Test
+    void 이미_종료된_라이브방송의_종료는_204다() throws Exception {
+        int id = 라이브방송을_시작한다("두 번 종료");
+
+        종료한다(소유자(), id).andExpect(status().isNoContent());
+        종료한다(소유자(), id).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void 송출_종료는_없는_방송이면_404이고_녹화방송이면_409이며_로그인_확인이_먼저다() throws Exception {
+        int recording = 녹화방송을_올린다("녹화");
+
+        종료한다(소유자(), 999999).andExpect(status().isNotFound());
+        종료한다(비로그인(), 999999).andExpect(status().isUnauthorized());
+        종료한다(소유자(), recording).andExpect(status().isConflict());
+        종료한다(다른_사용자(), recording).andExpect(status().isForbidden());
     }
 }

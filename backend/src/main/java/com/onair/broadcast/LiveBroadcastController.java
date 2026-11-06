@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-/** 라이브방송 시작 요청을 송출 모듈에 넘기는 adapter. 종료는 시그널링 WebSocket으로만 한다. */
+/** 라이브방송 시작 요청을 송출 모듈에 넘기는 adapter. 종료는 시그널링 WebSocket 또는 BroadcastController의 end로 한다. */
 @RestController
 @RequestMapping("/api/broadcasts/live")
 class LiveBroadcastController {
