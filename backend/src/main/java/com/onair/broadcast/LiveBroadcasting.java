@@ -79,7 +79,7 @@ public class LiveBroadcasting {
             return reject(peer, result);
         }
         rooms.registerBroadcaster(broadcastId, peer, clock.instant());
-        peer.send(SignalMessage.of(SignalMessage.JOINED, "broadcastId", broadcastId));
+        peer.send(SignalMessage.of(SignalMessage.JOINED, SignalMessage.Field.BROADCAST_ID, broadcastId));
         return result;
     }
 
@@ -93,9 +93,9 @@ public class LiveBroadcasting {
             return reject(peer, result);
         }
         String viewerId = rooms.assignSeat(broadcastId, peer).orElseThrow();
-        peer.send(SignalMessage.of(SignalMessage.JOINED, "viewerId", viewerId));
+        peer.send(SignalMessage.of(SignalMessage.JOINED, SignalMessage.Field.VIEWER_ID, viewerId));
         rooms.broadcasterOf(broadcastId)
-                .ifPresent(b -> b.send(SignalMessage.of(SignalMessage.VIEWER_JOINED, "viewerId", viewerId)));
+                .ifPresent(b -> b.send(SignalMessage.of(SignalMessage.VIEWER_JOINED, SignalMessage.Field.VIEWER_ID, viewerId)));
         sendViewerCount(broadcastId);
         return result;
     }
@@ -129,7 +129,7 @@ public class LiveBroadcasting {
         }
         rooms.releaseSeat(peer).ifPresent(seat ->
                 rooms.broadcasterOf(seat.broadcastId()).ifPresent(b -> {
-                    b.send(SignalMessage.of(SignalMessage.VIEWER_LEFT, "viewerId", seat.viewerId()));
+                    b.send(SignalMessage.of(SignalMessage.VIEWER_LEFT, SignalMessage.Field.VIEWER_ID, seat.viewerId()));
                     sendViewerCount(seat.broadcastId());
                 }));
     }
@@ -180,7 +180,7 @@ public class LiveBroadcasting {
             from.send(SignalMessage.of(SignalMessage.ENDED));
             from.close();
         } else if (RELAYED_TYPES.contains(message.type())) {
-            rooms.viewerOf(broadcastId, message.text("to"))
+            rooms.viewerOf(broadcastId, message.text(SignalMessage.Field.TO))
                     .ifPresent(viewer -> viewer.send(forward(message, null)));
         }
     }
@@ -188,22 +188,22 @@ public class LiveBroadcasting {
     /** 보낸 쪽이 적은 to와 from은 버리고, 서버가 정한 from(있으면)만 붙여 전달한다. */
     private static SignalMessage forward(SignalMessage message, String from) {
         Map<String, Object> fields = new HashMap<>(message.fields());
-        fields.remove("to");
-        fields.remove("from");
+        fields.remove(SignalMessage.Field.TO);
+        fields.remove(SignalMessage.Field.FROM);
         if (from != null) {
-            fields.put("from", from);
+            fields.put(SignalMessage.Field.FROM, from);
         }
         return new SignalMessage(message.type(), fields);
     }
 
     private void sendViewerCount(long broadcastId) {
         rooms.broadcasterOf(broadcastId).ifPresent(b -> b.send(SignalMessage.of(
-                SignalMessage.VIEWER_COUNT, "count", rooms.viewerCount(broadcastId), "max", rooms.capacity())));
+                SignalMessage.VIEWER_COUNT, SignalMessage.Field.COUNT, rooms.viewerCount(broadcastId), SignalMessage.Field.MAX, rooms.capacity())));
     }
 
     private JoinResult reject(Peer peer, JoinResult result) {
         JoinResult.Rejection rejection = result == null ? JoinResult.Rejection.NOT_FOUND : result.rejection();
-        peer.send(SignalMessage.of(SignalMessage.REJECTED, "reason", rejection.reason()));
+        peer.send(SignalMessage.of(SignalMessage.REJECTED, SignalMessage.Field.REASON, rejection.reason()));
         peer.close();
         return JoinResult.rejected(rejection);
     }

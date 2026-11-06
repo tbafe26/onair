@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest'
 import contract from '../../../contracts/signaling.json'
 import {
   MessageType,
+  answerFromViewer,
+  candidateFromViewer,
+  candidateTo,
+  endBroadcast,
+  heartbeat,
+  joinBroadcaster,
+  joinViewer,
+  offerTo,
   RejectionReason,
   START_FAILURE_MESSAGE,
   VIEW_FAILURE_MESSAGE,
@@ -19,6 +27,96 @@ describe('계약 파일 대조', () => {
 
   it('거절 사유가 contracts/signaling.json과 같다', () => {
     expect(Object.values(RejectionReason).sort()).toEqual([...contract.rejectionReasons].sort())
+  })
+})
+
+type Direction = 'broadcaster->server' | 'viewer->server' | 'server->broadcaster' | 'server->viewer'
+
+/** 계약에서 해당 방향의 메시지 종류별 필드 이름. */
+function contractFields(direction: Direction): Record<string, string[]> {
+  const result: Record<string, string[]> = {}
+  for (const [type, directions] of Object.entries(contract.messages) as [string, Partial<Record<Direction, string[]>>][]) {
+    const fields = directions[direction]
+    if (fields) result[type] = fields
+  }
+  return result
+}
+
+const SAMPLE: Record<string, unknown> = {
+  broadcastId: 1,
+  viewerId: 'v1',
+  reason: 'full',
+  count: 2,
+  max: 5,
+  from: 'v1',
+  sdp: 's',
+  candidate: { candidate: 'c' },
+}
+
+/** 계약대로 필드를 채운 메시지. */
+function contractShaped(type: string, fields: string[]) {
+  return { type, ...Object.fromEntries(fields.map((name) => [name, SAMPLE[name]])) }
+}
+
+function fieldsOf(message: { type: string }): string[] {
+  return Object.keys(message).filter((key) => key !== 'type')
+}
+
+describe('계약 파일 필드 대조: 보내는 메시지', () => {
+  const sent: Record<Direction, Record<string, { type: string }>> = {
+    'broadcaster->server': {
+      [MessageType.JoinBroadcaster]: joinBroadcaster('k'),
+      [MessageType.End]: endBroadcast(),
+      [MessageType.Heartbeat]: heartbeat(),
+      [MessageType.Offer]: offerTo('v1', 's'),
+      [MessageType.Candidate]: candidateTo('v1', { candidate: 'c' }),
+    },
+    'viewer->server': {
+      [MessageType.JoinViewer]: joinViewer(),
+      [MessageType.Answer]: answerFromViewer('s'),
+      [MessageType.Candidate]: candidateFromViewer({ candidate: 'c' }),
+    },
+    'server->broadcaster': {},
+    'server->viewer': {},
+  }
+
+  it.each(['broadcaster->server', 'viewer->server'] as const)('%s 빌더의 필드가 계약과 같다', (direction) => {
+    const contracted = contractFields(direction)
+    expect(Object.keys(sent[direction]).sort()).toEqual(Object.keys(contracted).sort())
+    for (const [type, message] of Object.entries(sent[direction])) {
+      expect(message.type).toBe(type)
+      expect(fieldsOf(message).sort(), `${direction} ${type}`).toEqual([...contracted[type]].sort())
+    }
+  })
+})
+
+describe('계약 파일 필드 대조: 받는 메시지', () => {
+  // 시청자 화면은 joined를 쓰지 않아 파서가 모르는 종류로 본다.
+  const unparsed = new Set(['server->viewer joined'])
+  // 파서가 일부러 읽지 않는 필드(화면이 쓰지 않는다)
+  const unread = new Set(['joined.broadcastId', 'joined.viewerId'])
+  // 파서 결과에서 계약 필드가 드러나는 이름
+  const exposedAs: Record<string, string> = { from: 'viewerId' }
+
+  it.each([
+    ['server->broadcaster', parseBroadcasterInbound],
+    ['server->viewer', parseViewerInbound],
+  ] as const)('%s 계약 항목을 모두 읽는다', (direction, parse) => {
+    const entries = Object.entries(contractFields(direction))
+    expect(entries.length).toBeGreaterThan(0)
+    for (const [type, fields] of entries) {
+      if (unparsed.has(`${direction} ${type}`)) {
+        expect(parse(contractShaped(type, fields)), `${direction} ${type}`).toBeNull()
+        continue
+      }
+      const parsed = parse(contractShaped(type, fields)) as Record<string, unknown> | null
+      expect(parsed, `${direction} ${type}`).not.toBeNull()
+      expect(parsed?.type).toBe(type)
+      for (const name of fields) {
+        if (unread.has(`${type}.${name}`)) continue
+        expect(parsed, `${direction} ${type}.${name}`).toHaveProperty(exposedAs[name] ?? name, SAMPLE[name])
+      }
+    }
   })
 })
 

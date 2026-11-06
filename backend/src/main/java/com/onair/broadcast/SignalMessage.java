@@ -22,6 +22,23 @@ public record SignalMessage(String type, Map<String, Object> fields) {
     public static final String VIEWER_LEFT = "viewer-left";
     public static final String VIEWER_COUNT = "viewer-count";
 
+    /** 메시지 필드 이름. 계약 파일의 필드 이름과 같아야 하고, SignalingContractTest가 대조한다. */
+    public static final class Field {
+        public static final String STREAM_KEY = "streamKey";
+        public static final String BROADCAST_ID = "broadcastId";
+        public static final String VIEWER_ID = "viewerId";
+        public static final String REASON = "reason";
+        public static final String TO = "to";
+        public static final String FROM = "from";
+        public static final String SDP = "sdp";
+        public static final String CANDIDATE = "candidate";
+        public static final String COUNT = "count";
+        public static final String MAX = "max";
+
+        private Field() {
+        }
+    }
+
     public SignalMessage {
         fields = Map.copyOf(fields);
     }

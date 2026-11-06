@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -34,6 +35,9 @@ abstract class ApiTestSupport {
     @Autowired
     protected MutableClock clock;
 
+    @Autowired
+    protected JdbcTemplate jdbc;
+
     @Value("${app.storage.dir}")
     protected Path storageDir;
 
@@ -42,6 +46,8 @@ abstract class ApiTestSupport {
         // DB 시각 정밀도보다 거칠게 맞춰, 저장하기 전과 읽은 뒤의 시각이 같게 한다.
         clock.set(Instant.now().truncatedTo(ChronoUnit.MILLIS));
         repository.deleteAll();
+        // 녹화방송은 영상을 PERSIST로만 연결해 방송을 지워도 영상 행이 남는다. 남으면 앞선 테스트의 영상이 섞인다.
+        jdbc.update("delete from video");
         Files.createDirectories(storageDir);
         try (var files = Files.list(storageDir)) {
             for (Path file : files.toList()) {

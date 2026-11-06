@@ -7,16 +7,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 
 /** kind 컬럼이 구분 컬럼으로 실제 기록되고, 재생 시간이 같은 컬럼에 double로 저장되는지 DB에서 직접 확인한다. */
 class BroadcastKindColumnApiTest extends ApiTestSupport {
 
     static final byte[] MP4_BYTES = {0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0};
-
-    @Autowired
-    JdbcTemplate jdbc;
 
     @Test
     void 녹화방송을_등록하면_kind_컬럼에_RECORDING이_기록된다() throws Exception {
