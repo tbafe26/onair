@@ -15,6 +15,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class Donations implements BroadcastDeletionListener {
+
+    private static final Logger log = LoggerFactory.getLogger(Donations.class);
 
     static final long MIN_AMOUNT = 1_000;
     static final long MAX_AMOUNT = 500_000;
@@ -149,7 +153,12 @@ public class Donations implements BroadcastDeletionListener {
             throw new DonationNotPayableException();
         }
         if (won) {
-            publishConfirmed(donation);
+            try {
+                publishConfirmed(donation);
+            } catch (RuntimeException e) {
+                // 확정은 이미 커밋됐다. 구독자는 다시 접속하면 REST로 읽는다. 로그에는 후원 id만 남긴다.
+                log.warn("후원 {} 확정 메시지를 보내지 못했다: {}", donation.getId(), e.getClass().getSimpleName());
+            }
         }
     }
 
