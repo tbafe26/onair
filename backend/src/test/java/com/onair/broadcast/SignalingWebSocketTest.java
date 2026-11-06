@@ -116,6 +116,77 @@ class SignalingWebSocketTest {
     }
 
     @Test
+    void 송출자와_시청자가_offer_answer_candidate를_주고받고_송출이_끝나면_시청자가_ended를_받는다() throws Exception {
+        String started = 시작한다();
+        int id = JsonPath.read(started, "$.id");
+        String streamKey = JsonPath.read(started, "$.streamKey");
+
+        Inbox broadcaster = new Inbox();
+        WebSocketSession broadcasterSession = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster);
+        broadcasterSession.sendMessage(new TextMessage("{\"type\":\"join-broadcaster\",\"streamKey\":\"" + streamKey + "\"}"));
+        assertThat((String) JsonPath.read(broadcaster.next(), "$.type")).isEqualTo("joined");
+
+        Inbox viewer = new Inbox();
+        WebSocketSession viewerSession = 연결한다(id, DEV_SERVER_ORIGIN, viewer);
+        viewerSession.sendMessage(new TextMessage("{\"type\":\"join-viewer\"}"));
+        String viewerJoined = viewer.next();
+        assertThat((String) JsonPath.read(viewerJoined, "$.type")).isEqualTo("joined");
+        String viewerId = JsonPath.read(viewerJoined, "$.viewerId");
+
+        String viewerArrived = broadcaster.next();
+        assertThat((String) JsonPath.read(viewerArrived, "$.type")).isEqualTo("viewer-joined");
+        assertThat((String) JsonPath.read(viewerArrived, "$.viewerId")).isEqualTo(viewerId);
+        String count = broadcaster.next();
+        assertThat((String) JsonPath.read(count, "$.type")).isEqualTo("viewer-count");
+        assertThat((Integer) JsonPath.read(count, "$.count")).isEqualTo(1);
+
+        broadcasterSession.sendMessage(new TextMessage(
+                "{\"type\":\"offer\",\"to\":\"" + viewerId + "\",\"sdp\":\"offer-sdp\"}"));
+        String offer = viewer.next();
+        assertThat((String) JsonPath.read(offer, "$.type")).isEqualTo("offer");
+        assertThat((String) JsonPath.read(offer, "$.sdp")).isEqualTo("offer-sdp");
+
+        // 시청자가 보낸 from은 무시되고 서버가 부여한 번호가 붙는다.
+        viewerSession.sendMessage(new TextMessage("{\"type\":\"answer\",\"sdp\":\"answer-sdp\",\"from\":\"forged\"}"));
+        String answer = broadcaster.next();
+        assertThat((String) JsonPath.read(answer, "$.type")).isEqualTo("answer");
+        assertThat((String) JsonPath.read(answer, "$.from")).isEqualTo(viewerId);
+        assertThat((String) JsonPath.read(answer, "$.sdp")).isEqualTo("answer-sdp");
+
+        viewerSession.sendMessage(new TextMessage("{\"type\":\"candidate\",\"candidate\":\"cand\"}"));
+        String candidate = broadcaster.next();
+        assertThat((String) JsonPath.read(candidate, "$.type")).isEqualTo("candidate");
+        assertThat((String) JsonPath.read(candidate, "$.from")).isEqualTo(viewerId);
+
+        broadcasterSession.sendMessage(new TextMessage("{\"type\":\"end\"}"));
+        assertThat((String) JsonPath.read(broadcaster.next(), "$.type")).isEqualTo("ended");
+        assertThat((String) JsonPath.read(viewer.next(), "$.type")).isEqualTo("ended");
+        assertThat(viewer.closed.poll(10, TimeUnit.SECONDS)).isNotNull();
+    }
+
+    @Test
+    void 종료된_방송에_시청자로_연결하면_거절된다() throws Exception {
+        String started = 시작한다();
+        int id = JsonPath.read(started, "$.id");
+        String streamKey = JsonPath.read(started, "$.streamKey");
+        Inbox broadcaster = new Inbox();
+        WebSocketSession session = 연결한다(id, DEV_SERVER_ORIGIN, broadcaster);
+        session.sendMessage(new TextMessage("{\"type\":\"join-broadcaster\",\"streamKey\":\"" + streamKey + "\"}"));
+        broadcaster.next();
+        session.sendMessage(new TextMessage("{\"type\":\"end\"}"));
+        broadcaster.next();
+
+        Inbox viewer = new Inbox();
+        WebSocketSession viewerSession = 연결한다(id, DEV_SERVER_ORIGIN, viewer);
+        viewerSession.sendMessage(new TextMessage("{\"type\":\"join-viewer\"}"));
+
+        String rejected = viewer.next();
+        assertThat((String) JsonPath.read(rejected, "$.type")).isEqualTo("rejected");
+        assertThat((String) JsonPath.read(rejected, "$.reason")).isEqualTo("ended");
+        assertThat(viewer.closed.poll(10, TimeUnit.SECONDS)).isNotNull();
+    }
+
+    @Test
     void 허용되지_않은_Origin은_핸드셰이크에서_거절된다() throws Exception {
         int id = JsonPath.read(시작한다(), "$.id");
 

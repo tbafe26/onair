@@ -170,6 +170,7 @@ export function LiveBroadcastPage() {
           <p className="text-sub">
             경과 시간 <Elapsed startedAt={state.startedAt} />
           </p>
+          <p className="text-sub">시청자 {state.viewerCount}명</p>
           {confirmingEnd ? (
             <div role="alertdialog" aria-label="송출 종료 확인" className="flex flex-col gap-3 rounded-2xl bg-card p-5">
               <p className="font-semibold text-foreground">송출을 종료할까요?</p>

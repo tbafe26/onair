@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -8,6 +8,7 @@ import type {
   SignalingHandlers,
   SignalMessage,
 } from '../live/broadcaster'
+import { createFakePeer, type FakePeer } from '../test/fakePeer'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
@@ -17,6 +18,7 @@ const fake = vi.hoisted(() => ({
   sent: [] as SignalMessage[],
   handlers: null as SignalingHandlers | null,
   tracks: [] as { stop: () => void }[],
+  peers: [] as FakePeer[],
 }))
 
 vi.mock('../live/browser-deps', () => ({
@@ -34,6 +36,7 @@ function error(name: string) {
 function resetFake(overrides: Partial<BroadcasterDeps> = {}) {
   fake.sent = []
   fake.handlers = null
+  fake.peers = []
   fake.tracks = [{ stop: vi.fn() }, { stop: vi.fn() }]
   const stream = { getTracks: () => fake.tracks } as unknown as MediaStream
   fake.deps = {
@@ -42,6 +45,11 @@ function resetFake(overrides: Partial<BroadcasterDeps> = {}) {
     openSignaling: async (_id: number, handlers: SignalingHandlers): Promise<SignalingChannel> => {
       fake.handlers = handlers
       return { send: (message) => void fake.sent.push(message), close: () => {} }
+    },
+    createPeerConnection: () => {
+      const peer = createFakePeer()
+      fake.peers.push(peer)
+      return peer
     },
     now: () => Date.now() - 65_000,
     ...overrides,
@@ -237,4 +245,27 @@ it('송출 중에 다른 화면으로 가려 하면 확인을 받고, 계속 방
 
   expect(router.state.location.pathname).toBe('/broadcasts/live/new')
   expect(screen.getByText('LIVE')).toBeInTheDocument()
+})
+
+it('송출 중에는 현재 시청자 수를 보여 주고, 시청자가 드나들어도 다른 시청자의 연결은 유지한다', async () => {
+  const user = userEvent.setup()
+  renderApp('/broadcasts/live/new')
+  await startOnAir(user)
+  expect(screen.getByText('시청자 0명')).toBeInTheDocument()
+
+  act(() => {
+    fake.handlers?.onMessage({ type: 'viewer-joined', viewerId: '1' })
+    fake.handlers?.onMessage({ type: 'viewer-count', count: 1 })
+    fake.handlers?.onMessage({ type: 'viewer-joined', viewerId: '2' })
+    fake.handlers?.onMessage({ type: 'viewer-count', count: 2 })
+  })
+  expect(await screen.findByText('시청자 2명')).toBeInTheDocument()
+
+  act(() => {
+    fake.handlers?.onMessage({ type: 'viewer-left', viewerId: '1' })
+    fake.handlers?.onMessage({ type: 'viewer-count', count: 1 })
+  })
+
+  expect(await screen.findByText('시청자 1명')).toBeInTheDocument()
+  expect(fake.peers.map((peer) => peer.closed)).toEqual([true, false])
 })

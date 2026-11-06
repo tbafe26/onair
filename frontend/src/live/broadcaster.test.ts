@@ -6,6 +6,7 @@ import {
   type SignalingHandlers,
   type SignalMessage,
 } from './broadcaster'
+import { createFakePeer, type FakePeer } from '../test/fakePeer'
 
 function fakeStream() {
   const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }]
@@ -23,6 +24,7 @@ function domError(name: string) {
 function setup(overrides: Partial<BroadcasterDeps> = {}) {
   const camera = fakeStream()
   const sent: SignalMessage[] = []
+  const peers: FakePeer[] = []
   const close = vi.fn()
   let handlers: SignalingHandlers | null = null
   const startLive = vi.fn(async () => ({ id: 7, streamKey: 'fake-stream-key' }))
@@ -34,6 +36,11 @@ function setup(overrides: Partial<BroadcasterDeps> = {}) {
       handlers = h
       return { send: (message) => void sent.push(message), close }
     }),
+    createPeerConnection: () => {
+      const peer = createFakePeer()
+      peers.push(peer)
+      return peer
+    },
     now: () => 1_000,
     requestWakeLock: vi.fn(async () => ({ release })),
     ...overrides,
@@ -42,6 +49,7 @@ function setup(overrides: Partial<BroadcasterDeps> = {}) {
     deps,
     camera,
     sent,
+    peers,
     close,
     startLive,
     release,
@@ -278,5 +286,126 @@ describe('화면 정리', () => {
 
     camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
     expect(broadcaster.state().phase).toBe('requestingCamera')
+  })
+})
+
+describe('시청자 연결', () => {
+  async function withViewers(...ids: string[]) {
+    const { broadcaster, env } = await onAir()
+    ids.forEach((viewerId) => env.server.send({ type: 'viewer-joined', viewerId }))
+    await vi.waitFor(() => expect(env.sent.filter((m) => m.type === 'offer')).toHaveLength(ids.length))
+    return { broadcaster, env }
+  }
+
+  it('onAir가 되면 시청자 수는 0이고, viewer-count를 받을 때마다 반영한다', async () => {
+    const { broadcaster, env } = await onAir()
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 0 })
+
+    env.server.send({ type: 'viewer-count', count: 3 })
+
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 3 })
+  })
+
+  it('시청자가 들어오면 그 시청자 몫의 연결을 만들어 내 영상을 싣고 offer를 보낸다', async () => {
+    const { env } = await withViewers('1')
+
+    expect(env.peers).toHaveLength(1)
+    expect(env.peers[0].tracks).toHaveLength(2)
+    expect(env.peers[0].localDescription).toEqual({ type: 'offer', sdp: 'fake-offer' })
+    expect(env.sent.at(-1)).toEqual({ type: 'offer', to: '1', sdp: 'fake-offer' })
+  })
+
+  it('시청자마다 별도 연결을 만들고, 후보는 해당 시청자에게 보낸다', async () => {
+    const { env } = await withViewers('1', '2')
+
+    env.peers[1].emitCandidate({ candidate: 'to-two' })
+
+    expect(env.peers).toHaveLength(2)
+    expect(env.sent.at(-1)).toEqual({ type: 'candidate', to: '2', candidate: { candidate: 'to-two' } })
+  })
+
+  it('시청자의 answer와 candidate는 from으로 지정한 연결에만 넣는다', async () => {
+    const { env } = await withViewers('1', '2')
+
+    env.server.send({ type: 'answer', from: '2', sdp: 'viewer-answer' })
+    env.server.send({ type: 'candidate', from: '2', candidate: { candidate: 'viewer-cand' } })
+    await vi.waitFor(() => expect(env.peers[1].candidates).toHaveLength(1))
+
+    expect(env.peers[1].remoteDescription).toEqual({ type: 'answer', sdp: 'viewer-answer' })
+    expect(env.peers[1].candidates).toEqual([{ candidate: 'viewer-cand' }])
+    expect(env.peers[0].remoteDescription).toBeNull()
+    expect(env.peers[0].candidates).toEqual([])
+  })
+
+  it('시청자가 나가면 그 연결만 닫고 다른 시청자의 연결은 유지한다', async () => {
+    const { broadcaster, env } = await withViewers('1', '2')
+
+    env.server.send({ type: 'viewer-left', viewerId: '1' })
+    env.server.send({ type: 'viewer-count', count: 1 })
+
+    expect(env.peers[0].closed).toBe(true)
+    expect(env.peers[1].closed).toBe(false)
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 1 })
+    env.server.send({ type: 'answer', from: '2', sdp: 'still-ok' })
+    await vi.waitFor(() => expect(env.peers[1].remoteDescription).not.toBeNull())
+  })
+
+  it('한 시청자와의 협상이 실패하면 그 연결만 닫는다', async () => {
+    const { env } = await withViewers('1', '2')
+    env.peers[0].setRemoteDescription = async () => {
+      throw new Error('잘못된 answer')
+    }
+
+    env.server.send({ type: 'answer', from: '1', sdp: 'bad' })
+    await vi.waitFor(() => expect(env.peers[0].closed).toBe(true))
+
+    expect(env.peers[1].closed).toBe(false)
+  })
+
+  it('송출을 끝내면 모든 시청자 연결을 닫는다', async () => {
+    const { broadcaster, env } = await withViewers('1', '2')
+
+    const ending = broadcaster.end()
+    env.server.send({ type: 'ended' })
+    await ending
+
+    expect(env.peers.every((peer) => peer.closed)).toBe(true)
+  })
+
+  it('화면을 떠나면 모든 시청자 연결을 닫는다', async () => {
+    const { broadcaster, env } = await withViewers('1', '2')
+
+    broadcaster.dispose()
+
+    expect(env.peers.every((peer) => peer.closed)).toBe(true)
+  })
+
+  it('알 수 없는 시청자를 가리키거나 번호가 없는 메시지는 무시한다', async () => {
+    const { env } = await onAir()
+
+    env.server.send({ type: 'answer', from: '9', sdp: 'x' })
+    env.server.send({ type: 'viewer-joined' })
+    env.server.send({ type: 'viewer-left', viewerId: '9' })
+
+    expect(env.peers).toHaveLength(0)
+  })
+
+  it('ICE 서버 목록은 비워 둔다', async () => {
+    const { createBrowserPeerConnection } = await import('./peer')
+    const created: unknown[] = []
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      class {
+        constructor(config: unknown) {
+          created.push(config)
+        }
+        addEventListener() {}
+      },
+    )
+
+    createBrowserPeerConnection()
+    vi.unstubAllGlobals()
+
+    expect(created).toEqual([{ iceServers: [] }])
   })
 })

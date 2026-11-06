@@ -64,6 +64,9 @@ class SignalingWebSocketHandler extends TextWebSocketHandler {
             } else {
                 live.joinAsBroadcaster(id, message.text("streamKey"), peer);
             }
+        } else if (SignalMessage.JOIN_VIEWER.equals(type)) {
+            Long id = (Long) session.getAttributes().get(BROADCAST_ID_ATTRIBUTE);
+            live.joinAsViewer(id == null ? -1 : id, peer);
         } else {
             live.relay(peer, message);
         }

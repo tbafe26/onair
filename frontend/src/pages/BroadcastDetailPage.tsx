@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
 import {
@@ -11,6 +12,8 @@ import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { formatDateTime } from '../lib/format'
+import { browserViewerDeps } from '../live/browser-deps'
+import { useLiveViewer } from '../live/useLiveViewer'
 
 export function BroadcastDetailPage() {
   const { id = '' } = useParams()
@@ -73,17 +76,13 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
   )
 }
 
-/** 라이브방송 상세. 영상 시청은 이어지는 티켓에서 붙이고, 지금은 상태 문구와 시각을 보여 준다. */
+/** 라이브방송 상세. 방송 중이면 WebRTC로 영상을 받아 보여 주고, 종료됐으면 종료 안내를 보여 준다. */
 function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
   const onAir = data.status === 'ON_AIR'
   return (
     <div className="-mx-5 -mt-8 flex flex-col lg:flex-row lg:items-start">
       <section className="min-w-0 flex-1">
-        <div className="flex aspect-video w-full items-center justify-center bg-black text-white">
-          <p role="status" className="px-5 text-center text-lg font-semibold">
-            {onAir ? '방송 중' : '방송이 종료되었습니다'}
-          </p>
-        </div>
+        {onAir ? <LiveViewer key={data.id} broadcastId={data.id} /> : <LiveStatusBox text={ENDED_TEXT} />}
         <div className="px-5">
           <h1 className="mt-4 truncate text-[28px] font-extrabold text-foreground" title={data.title}>
             {data.title}
@@ -101,6 +100,53 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
       <div className="w-full shrink-0 px-5 pt-5 lg:w-[368px]">
         <MoreBroadcastsPanel currentId={data.id} />
       </div>
+    </div>
+  )
+}
+
+const ENDED_TEXT = '방송이 종료되었습니다'
+
+function LiveStatusBox({ text }: { text: string }) {
+  return (
+    <div className="flex aspect-video w-full items-center justify-center bg-black text-white">
+      <p role="status" className="px-5 text-center text-lg font-semibold">
+        {text}
+      </p>
+    </div>
+  )
+}
+
+/** 방송 중인 라이브방송의 영상 영역. 소리 없이 자동 재생하고, 버튼으로 소리를 켠다. */
+function LiveViewer({ broadcastId }: { broadcastId: number }) {
+  const viewer = useLiveViewer(browserViewerDeps, broadcastId)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [soundOn, setSoundOn] = useState(false)
+  const stream = viewer.phase === 'playing' ? viewer.stream : null
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = stream
+  }, [stream])
+
+  if (viewer.phase === 'connecting') return <LiveStatusBox text="연결 중…" />
+  if (viewer.phase === 'ended') return <LiveStatusBox text={ENDED_TEXT} />
+  if (viewer.phase === 'failed') {
+    return <LiveStatusBox text="연결하지 못했습니다. 잠시 뒤 새로고침해 다시 시도해 주세요." />
+  }
+  return (
+    <div className="relative aspect-video w-full bg-black">
+      <video
+        ref={videoRef}
+        aria-label="라이브 영상"
+        muted={!soundOn}
+        autoPlay
+        playsInline
+        className="h-full w-full object-contain"
+      />
+      {!soundOn && (
+        <Button className="absolute right-3 bottom-3" onClick={() => setSoundOn(true)}>
+          소리 켜기
+        </Button>
+      )}
     </div>
   )
 }
