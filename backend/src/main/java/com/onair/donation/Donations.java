@@ -90,7 +90,7 @@ public class Donations implements BroadcastDeletionListener {
             throw new NotDonorException();
         }
         if (donation.getStatus() == DonationStatus.CONFIRMED) {
-            return decided(donation, paymentKey);
+            return decided(donation, paymentKey, amount);
         }
         if (donation.getStatus() != DonationStatus.PENDING) {
             throw new DonationNotPayableException();
@@ -121,7 +121,7 @@ public class Donations implements BroadcastDeletionListener {
         }
         markConfirmed(donation, paymentKey);
         // 이긴 쪽과 진 쪽 모두 저장된 확정 결과를 읽어 돌려준다.
-        return decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new), paymentKey);
+        return decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new), paymentKey, amount);
     }
 
     /**
@@ -178,9 +178,12 @@ public class Donations implements BroadcastDeletionListener {
                 && paymentKey.equals(paid.paymentKey());
     }
 
-    // 확정된 후원이면 같은 결제 키일 때만 결과를 돌려준다. 그 밖의 상태는 409다.
-    private static DonationView decided(Donation donation, String paymentKey) {
+    // 확정된 후원이면 같은 결제 키일 때만 결과를 돌려준다. 금액이 다르면 400, 그 밖의 상태는 409다.
+    private static DonationView decided(Donation donation, String paymentKey, long amount) {
         if (donation.getStatus() == DonationStatus.CONFIRMED && paymentKey.equals(donation.getPaymentKey())) {
+            if (amount != donation.getAmount()) {
+                throw new AmountMismatchException();
+            }
             return DonationView.of(donation);
         }
         throw new DonationNotPayableException();
