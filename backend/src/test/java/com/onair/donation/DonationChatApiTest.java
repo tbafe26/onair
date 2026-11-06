@@ -8,6 +8,7 @@ import com.onair.auth.AuthClient;
 import com.onair.broadcast.StartLiveCommand;
 import com.onair.live.ChatContractTest;
 import com.onair.live.ChatMessage;
+import com.onair.live.ChatSubscriber;
 import com.onair.live.LiveBroadcasting;
 import com.onair.live.LiveChat;
 import com.onair.live.RecordingSubscriber;
@@ -29,6 +30,27 @@ class DonationChatApiTest extends DonationApiTestSupport {
 
     List<ChatMessage> 후원_메시지(RecordingSubscriber subscriber) {
         return subscriber.received.stream().filter(m -> m.type().equals("donation")).toList();
+    }
+
+    @Test
+    void 구독자_전송이_실패해도_커밋된_확정은_200이다() throws Exception {
+        int id = 라이브방송을_시작한다();
+        chat.subscribe(id, new ChatSubscriber() {
+            @Override
+            public void send(ChatMessage message) {
+                throw new IllegalStateException("전송 실패");
+            }
+
+            @Override
+            public void close() {
+            }
+        });
+        AuthClient viewer = 시청자();
+        String orderId = 주문을_만든다(viewer.credentials(), id, 5000, "응원");
+
+        승인한다(viewer.credentials(), "pk_1", orderId, 5000).andExpect(status().isOk());
+
+        assertThat(후원_행(orderId).get("STATUS")).isEqualTo("CONFIRMED");
     }
 
     @Test

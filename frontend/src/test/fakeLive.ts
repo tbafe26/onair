@@ -23,6 +23,8 @@ export interface FakeViewer extends LiveViewer {
 
 export interface FakeChat extends LiveChat {
   setState(state: ChatState): void
+  /** 채팅이 다시 연결돼 목록을 채웠다고 알린다. */
+  emitReconnected(): void
   join: ReturnType<typeof vi.fn<LiveChat['join']>>
   send: ReturnType<typeof vi.fn<LiveChat['send']>>
   dispose: ReturnType<typeof vi.fn<LiveChat['dispose']>>
@@ -84,10 +86,16 @@ export function createFakeViewer(): FakeViewer {
 
 export function createFakeChat(): FakeChat {
   const state = createStore<ChatState>({ phase: 'connecting' })
+  const reconnected = new Set<() => void>()
   return {
     state: state.get,
     subscribe: state.subscribe,
     setState: state.set,
+    onReconnected(listener) {
+      reconnected.add(listener)
+      return () => void reconnected.delete(listener)
+    },
+    emitReconnected: () => reconnected.forEach((listener) => listener()),
     join: vi.fn(),
     send: vi.fn(async () => {}),
     dispose: vi.fn(),

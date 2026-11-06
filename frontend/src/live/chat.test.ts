@@ -235,6 +235,21 @@ describe('채팅 모듈', () => {
     expect(commentsOf(chat.state())).toEqual([1, 2, 3, 4, 5, 6])
   })
 
+  it('다시 연결해 목록을 채우면 알리고 처음 연결에서는 알리지 않는다', async () => {
+    const env = setup([comment(1)])
+    const chat = createLiveChat(env.deps, 7)
+    const reconnected = vi.fn()
+    chat.onReconnected(reconnected)
+    chat.join()
+    await vi.waitFor(() => expect(chat.state().phase).toBe('open'))
+    expect(reconnected).not.toHaveBeenCalled()
+
+    env.server.drop()
+    env.fireTimer()
+    await vi.waitFor(() => expect(env.sockets).toHaveLength(2))
+    await vi.waitFor(() => expect(reconnected).toHaveBeenCalledTimes(1))
+  })
+
   it('놓친 채팅이 한 페이지를 넘어도 마지막으로 받은 채팅 뒤까지 이어서 채운다', async () => {
     const { chat, env } = await opened([comment(1), comment(2)], { pageSize: 2 })
 

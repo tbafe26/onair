@@ -18,8 +18,8 @@ const STICK_THRESHOLD = 40
  * 높이는 className으로 정한다. 목록이 넘치면 패널 안에서만 스크롤한다.
  */
 export function ChatPanel({ broadcastId, className }: { broadcastId: number; className?: string }) {
-  const { state, send, retry } = useLiveChat(broadcastId)
-  useDonationEvents(broadcastId, state)
+  const { state, send, retry, onReconnected } = useLiveChat(broadcastId)
+  useDonationEvents(broadcastId, state, onReconnected)
 
   return (
     <section
@@ -38,8 +38,9 @@ export function ChatPanel({ broadcastId, className }: { broadcastId: number; cla
 /**
  * 채팅으로 온 후원을 후원 영역의 조회 캐시에 반영한다. 반영한 id는 기억해 같은 후원을 두 번 합치지 않는다.
  * 다른 방송으로 바뀌거나 채팅을 다시 시작해 후원 목록이 비면 처음부터 다시 센다.
+ * 연결이 끊긴 동안 놓친 후원은 채팅으로 오지 않으므로, 다시 연결되면 후원 내역을 다시 불러온다.
  */
-function useDonationEvents(broadcastId: number, state: ChatState) {
+function useDonationEvents(broadcastId: number, state: ChatState, onReconnected: (listener: () => void) => () => void) {
   const queryClient = useQueryClient()
   const applied = useRef(new Set<number>())
   const donations = state.phase === 'open' || state.phase === 'ended' ? state.donations : null
@@ -58,6 +59,11 @@ function useDonationEvents(broadcastId: number, state: ChatState) {
       )
     }
   }, [broadcastId, donations, queryClient])
+
+  useEffect(
+    () => onReconnected(() => void queryClient.invalidateQueries({ queryKey: donationKeys.list(broadcastId) })),
+    [broadcastId, onReconnected, queryClient],
+  )
 }
 
 type ChatItem = { key: string; at: number; comment: Comment; donation?: undefined } | { key: string; at: number; donation: ChatDonation; comment?: undefined }

@@ -239,3 +239,18 @@ it('녹화방송에는 후원 영역이 없다', async () => {
   expect(screen.queryByRole('button', { name: '후원' })).not.toBeInTheDocument()
   expect(screen.queryByText(/후원할 수 있습니다/)).not.toBeInTheDocument()
 })
+
+it('메시지 글자 수는 이모지를 한 글자로 세고 100자까지만 받는다', async () => {
+  signedInAs('시청자닉', 'viewer01')
+  stubBroadcast()
+  const user = userEvent.setup()
+  renderApp('/broadcasts/5')
+
+  const dialog = await openDialog(user)
+  const field = within(dialog).getByLabelText('메시지(선택)')
+  await user.click(field)
+  await user.paste('🙂'.repeat(101))
+
+  expect(Array.from((field as HTMLTextAreaElement).value)).toHaveLength(100)
+  expect(within(dialog).getByText('100/100자')).toBeInTheDocument()
+})

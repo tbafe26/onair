@@ -23,6 +23,14 @@ class DonationFailApiTest extends DonationApiTestSupport {
     }
 
     @Test
+    void 비로그인은_401이고_본문이_깨져도_먼저_401이다() throws Exception {
+        mockMvc.perform(post("/api/donations/{orderId}/fail", "order").with(Csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON).content("{깨진"))
+                .andExpect(status().isUnauthorized());
+        실패를_기록한다(Csrf.token(), "order", Map.of("code", "")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void 사용자가_결제창을_닫으면_CANCELED로_기록하고_코드를_남긴다() throws Exception {
         int id = 라이브방송을_시작한다();
         AuthClient viewer = 시청자();

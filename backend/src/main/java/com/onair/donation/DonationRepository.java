@@ -21,13 +21,17 @@ interface DonationRepository extends JpaRepository<Donation, Long> {
     @EntityGraph(attributePaths = "donor")
     Optional<Donation> findByOrderId(String orderId);
 
-    /** 대기일 때만 확정으로 바꾼다. 한 번만 성공하며 바뀐 행 수(0 또는 1)를 돌려준다. */
+    /**
+     * 아직 확정되지 않았을 때만 확정으로 바꾼다. 결제가 확인된 주문은 그사이 실패·취소로 바뀌었어도 확정한다.
+     * 한 번만 성공하며 바뀐 행 수(0 또는 1)를 돌려준다.
+     */
     @Transactional
     @Modifying(clearAutomatically = true)
     @Query("update Donation d set d.status = com.onair.donation.DonationStatus.CONFIRMED,"
-            + " d.paymentKey = :paymentKey, d.confirmedAt = :at"
-            + " where d.id = :id and d.status = com.onair.donation.DonationStatus.PENDING")
-    int confirmIfPending(@Param("id") long id, @Param("paymentKey") String paymentKey, @Param("at") Instant at);
+            + " d.paymentKey = :paymentKey, d.confirmedAt = :at,"
+            + " d.failureCode = null"
+            + " where d.id = :id and d.status <> com.onair.donation.DonationStatus.CONFIRMED")
+    int confirmUnlessConfirmed(@Param("id") long id, @Param("paymentKey") String paymentKey, @Param("at") Instant at);
 
     /** 확정 시각이 (at, id) 위치보다 이른 확정 후원을 최신순으로 돌려준다. 후원자는 함께 읽는다. */
     @Query("select d from Donation d join fetch d.donor where d.broadcast.id = :broadcastId"

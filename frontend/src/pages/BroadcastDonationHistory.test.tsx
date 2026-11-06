@@ -181,3 +181,18 @@ it('방송 중 채팅으로 온 후원은 합계를 바꾸고 내역 맨 위에 
   expect(items).toHaveLength(3)
   expect(within(area).getByText('3건')).toBeInTheDocument()
 })
+
+it('채팅이 다시 연결되면 끊긴 동안 놓친 후원을 다시 불러와 합계를 맞춘다', async () => {
+  stubBroadcast()
+  let body = { total: { amount: 6_000, count: 2 }, items: [second, third], nextCursor: null as string | null }
+  server.use(http.get('/api/broadcasts/5/donations', () => HttpResponse.json(body)))
+  const app = renderApp('/broadcasts/5')
+  const area = await screen.findByRole('region', { name: '후원' })
+  expect(await within(area).findByText('6,000원')).toBeInTheDocument()
+
+  body = { total: { amount: 16_000, count: 3 }, items: [first, second, third], nextCursor: null }
+  act(() => app.fake.chat.emitReconnected())
+
+  expect(await within(area).findByText('16,000원')).toBeInTheDocument()
+  expect(within(area).getByText('3건')).toBeInTheDocument()
+})
