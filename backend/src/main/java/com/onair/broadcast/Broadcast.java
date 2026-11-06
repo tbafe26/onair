@@ -14,6 +14,7 @@ import jakarta.persistence.InheritanceType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 방송: 녹화방송과 라이브방송이 공유하는 상위 개념.
@@ -78,4 +79,25 @@ public abstract class Broadcast {
 
     /** 썸네일 저장 키. 썸네일이 없으면 null이다. */
     abstract String thumbnailKey();
+
+    /** 송출 중인지. 녹화방송은 송출하지 않으므로 항상 false다. */
+    abstract boolean isOnAir();
+
+    /** 지금 지울 수 있는지. 방송 중인 라이브방송만 지울 수 없다. */
+    abstract boolean canDeleteNow();
+
+    /** 지금 댓글을 받는지. 라이브방송은 방송 중일 때만 받는다. */
+    abstract boolean acceptsCommentsNow();
+
+    /** 댓글을 지울 수 있는지. 라이브방송의 채팅은 지울 수 없다. */
+    abstract boolean commentsDeletable();
+
+    /** 댓글이 실시간 채팅인지. 채팅은 구독자에게 보내고 구독을 받는다. */
+    abstract boolean isChat();
+
+    /** 소유자가 송출을 종료할 수 있는 방송인지. */
+    abstract boolean canEndStream();
+
+    /** 방송을 지울 때 함께 지울 저장소 파일 키. */
+    abstract List<String> ownedFileKeys();
 }
