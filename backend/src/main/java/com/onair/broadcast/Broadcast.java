@@ -52,4 +52,7 @@ public abstract class Broadcast {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    /** 썸네일 저장 키. 썸네일이 없으면 null이다. */
+    abstract String thumbnailKey();
 }

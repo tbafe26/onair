@@ -46,12 +46,7 @@ class RegistrationRules {
     RegisterRecordingCommand validate(RegistrationForm form) {
         List<FieldViolation> violations = new ArrayList<>();
 
-        String title = trimWhiteSpace(form.title());
-        if (title.isEmpty()) {
-            violations.add(new FieldViolation("title", "제목을 입력하세요"));
-        } else if (title.length() > MAX_TITLE_LENGTH) {
-            violations.add(new FieldViolation("title", "제목은 " + MAX_TITLE_LENGTH + "자 이하로 입력하세요"));
-        }
+        String title = checkTitle(form.title(), violations);
 
         UploadedVideo uploaded = null;
         MultipartFile video = form.video();
@@ -68,18 +63,7 @@ class RegistrationRules {
             }
         }
 
-        MultipartFile thumbnail = form.thumbnail();
-        if (thumbnail != null && thumbnail.isEmpty()) {
-            thumbnail = null;
-        }
-        if (thumbnail != null) {
-            if (thumbnail.getSize() > MAX_THUMBNAIL_BYTES) {
-                violations.add(new FieldViolation("thumbnail",
-                        "썸네일은 " + formatBytes(MAX_THUMBNAIL_BYTES) + " 이하여야 합니다"));
-            } else if (!isJpeg(readHead(thumbnail, 3))) {
-                violations.add(new FieldViolation("thumbnail", "썸네일은 JPEG 이미지여야 합니다"));
-            }
-        }
+        MultipartFile thumbnail = checkThumbnail(form.thumbnail(), violations);
 
         DurationSeconds duration = null;
         String rawDuration = form.durationSeconds();
@@ -94,6 +78,41 @@ class RegistrationRules {
             throw new InvalidRequestException(violations);
         }
         return new RegisterRecordingCommand(title, uploaded, thumbnail, duration);
+    }
+
+    /** 라이브방송 시작 입력을 검사한다. 제목과 썸네일 규칙은 녹화방송과 같고, 틀리면 InvalidRequestException이다. */
+    StartLiveCommand validate(StartLiveCommand command) {
+        List<FieldViolation> violations = new ArrayList<>();
+        String title = checkTitle(command.title(), violations);
+        MultipartFile thumbnail = checkThumbnail(command.thumbnail(), violations);
+        if (!violations.isEmpty()) {
+            throw new InvalidRequestException(violations);
+        }
+        return new StartLiveCommand(title, thumbnail);
+    }
+
+    private static String checkTitle(String rawTitle, List<FieldViolation> violations) {
+        String title = trimWhiteSpace(rawTitle);
+        if (title.isEmpty()) {
+            violations.add(new FieldViolation("title", "제목을 입력하세요"));
+        } else if (title.length() > MAX_TITLE_LENGTH) {
+            violations.add(new FieldViolation("title", "제목은 " + MAX_TITLE_LENGTH + "자 이하로 입력하세요"));
+        }
+        return title;
+    }
+
+    /** 빈 파일은 보내지 않은 것으로 본다. 규칙에 맞는 썸네일을 돌려주고, 없거나 틀리면 null이다(틀리면 violations에 담는다). */
+    private static MultipartFile checkThumbnail(MultipartFile thumbnail, List<FieldViolation> violations) {
+        if (thumbnail == null || thumbnail.isEmpty()) {
+            return null;
+        }
+        if (thumbnail.getSize() > MAX_THUMBNAIL_BYTES) {
+            violations.add(new FieldViolation("thumbnail",
+                    "썸네일은 " + formatBytes(MAX_THUMBNAIL_BYTES) + " 이하여야 합니다"));
+        } else if (!isJpeg(readHead(thumbnail, 3))) {
+            violations.add(new FieldViolation("thumbnail", "썸네일은 JPEG 이미지여야 합니다"));
+        }
+        return thumbnail;
     }
 
     /** 바이트 수를 "2MB", "512KB" 같은 문구로 바꾼다. 딱 떨어지지 않으면 바이트로 쓴다. */
