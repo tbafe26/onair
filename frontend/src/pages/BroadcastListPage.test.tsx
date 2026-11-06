@@ -124,7 +124,7 @@ it('목록 끝에 닿으면 마지막 방송 id를 before로 다음 묶음을 �
   revealObservedElements()
   await screen.findByRole('link', { name: /방송 7(?!\d)/ })
   await waitFor(() => expect(cardCount()).toBe(10))
-  expect(requests).toEqual(['', '?before=8'])
+  expect(requests).toEqual(['?kind=RECORDING', '?kind=RECORDING&before=8'])
   // 중복 없이 이어 붙는다.
   expect(screen.getAllByRole('link', { name: /방송 8(?!\d)/ })).toHaveLength(1)
 })
@@ -164,7 +164,7 @@ it('마지막 묶음 뒤에는 감시와 추가 요청이 없다', async () => {
   expect(observedElementCount()).toBe(0)
   revealObservedElements()
   await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(requests).toEqual(['', '?before=3'])
+  expect(requests).toEqual(['?kind=RECORDING', '?kind=RECORDING&before=3'])
   expect(cardCount()).toBe(7)
 })
 

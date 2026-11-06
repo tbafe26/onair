@@ -51,11 +51,17 @@ export interface RegisterBroadcastInput {
   durationSeconds: number | null
 }
 
+/** 목록을 거르는 방송 종류. 서버의 kind 쿼리 값과 같다. */
+export type BroadcastKindFilter = 'LIVE' | 'RECORDING'
+
 // 화면은 상대 경로로 호출하고, 개발 중에는 Vite 프록시가 백엔드로 넘긴다.
-// before가 있으면 그 id보다 작은(더 오래된) 방송 묶음을 받는다.
-export async function fetchBroadcasts(before?: number): Promise<BroadcastPage> {
+// before가 있으면 그 id보다 작은(더 오래된) 방송 묶음을 받고, kind가 있으면 그 종류만 받는다.
+export async function fetchBroadcasts(
+  before?: number,
+  kind?: BroadcastKindFilter,
+): Promise<BroadcastPage> {
   const response = await axios.get<BroadcastPage>('/api/broadcasts', {
-    params: before === undefined ? undefined : { before },
+    params: { kind, before },
   })
   return response.data
 }

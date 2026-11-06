@@ -58,9 +58,10 @@ class BroadcastService {
         return rules.policy();
     }
 
-    /** 최신 등록순 한 묶음. before가 null이면 가장 최신부터, 있으면 그 id보다 작은 방송만 돌려준다. size가 null이면 기본값이고, 50을 넘으면 50으로 줄이며, 1 미만이면 400 예외다. */
+    /** 최신 등록순 한 묶음. before가 null이면 가장 최신부터, 있으면 그 id보다 작은 방송만 돌려준다. size가 null이면 기본값이고, 50을 넘으면 50으로 줄이며, 1 미만이면 400 예외다. kind가 null이면 종류와 상관없이 전부이고, 알 수 없는 값은 400 예외다. */
     @Transactional(readOnly = true)
-    BroadcastPage list(Long before, Integer requestedSize) {
+    BroadcastPage list(Long before, Integer requestedSize, String requestedKind) {
+        BroadcastKind kind = parseKind(requestedKind);
         int size = requestedSize == null ? DEFAULT_PAGE_SIZE : requestedSize;
         if (size < 1) {
             throw new InvalidRequestException(List.of(new FieldViolation(
@@ -69,10 +70,28 @@ class BroadcastService {
         size = Math.min(size, MAX_PAGE_SIZE);
         long cursor = before == null ? Long.MAX_VALUE : before;
         // 한 건 더 읽어 다음 묶음이 있는지 판단한다.
-        List<Broadcast> found = repository.findBefore(cursor, PageRequest.of(0, size + 1));
+        PageRequest window = PageRequest.of(0, size + 1);
+        List<Broadcast> found = switch (kind) {
+            case null -> repository.findBefore(cursor, window);
+            case RECORDING -> repository.findRecordingsBefore(cursor, window);
+            // 라이브방송 엔티티가 생기면(티켓 04) 여기서 라이브방송만 읽는다.
+            case LIVE -> List.of();
+        };
         boolean hasNext = found.size() > size;
         List<BroadcastSummary> items = found.stream().limit(size).map(BroadcastResponses::summary).toList();
         return new BroadcastPage(items, hasNext);
+    }
+
+    private static BroadcastKind parseKind(String value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return BroadcastKind.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidRequestException(List.of(new FieldViolation(
+                    "kind", "kind는 LIVE 또는 RECORDING이어야 합니다")));
+        }
     }
 
     @Transactional(readOnly = true)

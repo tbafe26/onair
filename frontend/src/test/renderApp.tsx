@@ -9,9 +9,10 @@ export function renderApp(initialPath = '/') {
     defaultOptions: { queries: { retry: false } },
   })
   const router = createMemoryRouter(routes, { initialEntries: [initialPath] })
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return { ...result, router }
 }

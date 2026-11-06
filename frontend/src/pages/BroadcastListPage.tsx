@@ -1,9 +1,9 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Clapperboard, Loader2 } from 'lucide-react'
+import { Clapperboard, Loader2, Radio } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { fetchBroadcasts } from '../api/broadcasts'
+import { fetchBroadcasts, type BroadcastKindFilter } from '../api/broadcasts'
 import { BroadcastCard } from '../components/BroadcastCard'
 import { BroadcastCardSkeleton } from '../components/BroadcastCardSkeleton'
 import { Button } from '../components/ui/button'
@@ -12,7 +12,21 @@ import { Button } from '../components/ui/button'
 const gridClass =
   'mt-6 grid grid-cols-1 gap-x-[14px] gap-y-[30px] sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'
 
+const tabs: { kind: BroadcastKindFilter; label: string }[] = [
+  { kind: 'LIVE', label: '라이브' },
+  { kind: 'RECORDING', label: '녹화방송' },
+]
+
+// 라이브방송은 송출 화면(티켓 04)이 생기기 전까지 비어 있으므로 기본 탭은 녹화방송이다.
+const DEFAULT_KIND: BroadcastKindFilter = 'RECORDING'
+
+function parseKind(value: string | null): BroadcastKindFilter {
+  return tabs.find((t) => t.kind === value)?.kind ?? DEFAULT_KIND
+}
+
 export function BroadcastListPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const kind = parseKind(searchParams.get('kind'))
   const {
     data,
     isPending,
@@ -23,8 +37,8 @@ export function BroadcastListPage() {
     isFetchingNextPage,
     isFetchNextPageError,
   } = useInfiniteQuery({
-    queryKey: broadcastKeys.infinite(),
-    queryFn: ({ pageParam }) => fetchBroadcasts(pageParam),
+    queryKey: broadcastKeys.infinite(kind),
+    queryFn: ({ pageParam }) => fetchBroadcasts(pageParam, kind),
     initialPageParam: undefined as number | undefined,
     // 마지막 묶음의 마지막 id보다 오래된 방송을 이어 받는다. 더 없으면 undefined다.
     getNextPageParam: (lastPage) =>
@@ -52,6 +66,27 @@ export function BroadcastListPage() {
   return (
     <section>
       <h1 className="text-[28px] font-extrabold text-foreground">전체 방송</h1>
+      <div role="tablist" aria-label="방송 종류" className="mt-4 flex gap-6 border-b border-border">
+        {tabs.map((t) => {
+          const selected = t.kind === kind
+          return (
+            <button
+              key={t.kind}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setSearchParams({ kind: t.kind })}
+              className={`-mb-px border-b-2 pb-2 text-base font-bold ${
+                selected
+                  ? 'border-foreground text-foreground'
+                  : 'border-transparent text-sub hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
       {isPending && (
         <ul aria-label="방송 목록을 불러오는 중" className={gridClass}>
           {Array.from({ length: 8 }, (_, i) => (
@@ -67,7 +102,13 @@ export function BroadcastListPage() {
           <Button onClick={() => void refetch()}>다시 시도</Button>
         </div>
       )}
-      {data && items.length === 0 && (
+      {data && items.length === 0 && kind === 'LIVE' && (
+        <div className="mt-24 flex flex-col items-center gap-4 text-center">
+          <Radio className="size-12 text-sub" aria-hidden="true" />
+          <p className="text-base text-sub">진행 중인 라이브 방송이 없습니다</p>
+        </div>
+      )}
+      {data && items.length === 0 && kind === 'RECORDING' && (
         <div className="mt-24 flex flex-col items-center gap-4 text-center">
           <Clapperboard className="size-12 text-sub" aria-hidden="true" />
           <p className="text-base text-sub">등록된 방송이 없습니다</p>
