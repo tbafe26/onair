@@ -67,6 +67,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return respond(e, problem(HttpStatus.CONFLICT, "방송 중", e.getMessage()), new HttpHeaders(), request);
     }
 
+    @ExceptionHandler(NotLiveBroadcastException.class)
+    ResponseEntity<Object> handleNotLive(NotLiveBroadcastException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.CONFLICT, "라이브방송 아님", e.getMessage()), new HttpHeaders(), request);
+    }
+
     @ExceptionHandler(BroadcastNotFoundException.class)
     ResponseEntity<Object> handleNotFound(BroadcastNotFoundException e, WebRequest request) {
         return respond(e, problem(HttpStatus.NOT_FOUND, "방송 없음", e.getMessage()), new HttpHeaders(), request);

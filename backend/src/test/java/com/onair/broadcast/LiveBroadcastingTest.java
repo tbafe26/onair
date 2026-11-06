@@ -674,4 +674,44 @@ class LiveBroadcastingTest extends ApiTestSupport {
         maintenance.run(null);
         assertThat(저장된_방송(another).status()).isEqualTo(LiveStatus.ENDED);
     }
+
+    @Test
+    void 소유자가_REST로_종료하면_시청자와_송출자가_ended를_받고_연결이_닫힌다() {
+        OnAir onAir = 송출을_시작한다("REST 종료");
+        RecordingPeer viewer = new RecordingPeer();
+        입장한다(onAir, viewer);
+
+        live.endByOwner(onAir.started().broadcastId(), owner().userId());
+
+        LiveBroadcast saved = 저장된_방송(onAir.started());
+        assertThat(saved.status()).isEqualTo(LiveStatus.ENDED);
+        assertThat(saved.endedAt()).isNotNull();
+        assertThat(viewer.last().type()).isEqualTo("ended");
+        assertThat(viewer.closed).isTrue();
+        assertThat(onAir.broadcaster().last().type()).isEqualTo("ended");
+        assertThat(onAir.broadcaster().closed).isTrue();
+        assertThat(live.joinAsViewer(onAir.started().broadcastId(), new RecordingPeer()).rejection())
+                .isEqualTo(JoinResult.Rejection.ENDED);
+    }
+
+    @Test
+    void 송출자가_연결하지_않은_방송도_REST로_종료할_수_있다() {
+        StartedLive started = 시작한다("연결 전 종료");
+
+        live.endByOwner(started.broadcastId(), owner().userId());
+
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ENDED);
+    }
+
+    @Test
+    void 이미_종료된_방송의_REST_종료는_종료_시각을_바꾸지_않는다() {
+        OnAir onAir = 송출을_시작한다("이미 종료");
+        live.relay(onAir.broadcaster(), SignalMessage.of("end"));
+        Instant endedAt = 저장된_방송(onAir.started()).endedAt();
+        clock.set(clock.instant().plusSeconds(60));
+
+        live.endByOwner(onAir.started().broadcastId(), owner().userId());
+
+        assertThat(저장된_방송(onAir.started()).endedAt()).isEqualTo(endedAt);
+    }
 }
