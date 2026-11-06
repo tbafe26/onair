@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.onair.auth.Csrf;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +32,7 @@ class BroadcastResponseContractTest extends ApiTestSupport {
     }
 
     long 녹화방송을_등록한다() throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts")
+        String body = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
                         .file(new MockMultipartFile(
                                 "video", "v.mp4", "video/mp4", BroadcastPagingApiTest.MP4_BYTES))
                         .param("title", "녹화"))
@@ -41,7 +42,7 @@ class BroadcastResponseContractTest extends ApiTestSupport {
     }
 
     long 라이브방송을_시작한다() throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts/live").param("title", "라이브"))
+        String body = mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token()).param("title", "라이브"))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return mapper.readTree(body).get("id").asLong();

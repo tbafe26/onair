@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.onair.auth.Csrf;
 import java.io.IOException;
 import java.nio.file.Files;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,7 @@ class BroadcastValidationApiTest extends ApiTestSupport {
     static final byte[] JPEG_BYTES = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 9, 8, 7};
 
     MockMultipartHttpServletRequestBuilder 요청(String title, byte[] video) {
-        MockMultipartHttpServletRequestBuilder builder = multipart("/api/broadcasts");
+        MockMultipartHttpServletRequestBuilder builder = multipart("/api/broadcasts").with(Csrf.token());
         if (video != null) {
             // 파일 이름과 Content-Type은 일부러 항상 mp4로 보낸다. 판정에 쓰이지 않아야 한다.
             builder.file(new MockMultipartFile("video", "fake.mp4", "video/mp4", video));

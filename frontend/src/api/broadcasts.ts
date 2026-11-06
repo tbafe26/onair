@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { apiClient } from './client'
 import { sizeLimitMessage } from '../lib/upload-rules'
 
 // 방송 종류가 늘면 아래 합집합에 변형이 늘고, 처리하지 않은 곳을 타입 검사가 알려 준다.
@@ -75,19 +76,19 @@ export async function fetchBroadcasts(
   before?: number,
   kind?: BroadcastKind,
 ): Promise<BroadcastPage> {
-  const response = await axios.get<BroadcastPage>('/api/broadcasts', {
+  const response = await apiClient.get<BroadcastPage>('/api/broadcasts', {
     params: { kind, before },
   })
   return response.data
 }
 
 export async function fetchUploadPolicy(): Promise<UploadPolicy> {
-  const response = await axios.get<UploadPolicy>('/api/broadcasts/upload-policy')
+  const response = await apiClient.get<UploadPolicy>('/api/broadcasts/upload-policy')
   return response.data
 }
 
 export async function fetchBroadcast(id: string): Promise<BroadcastDetail> {
-  const response = await axios.get<BroadcastDetail>(`/api/broadcasts/${encodeURIComponent(id)}`)
+  const response = await apiClient.get<BroadcastDetail>(`/api/broadcasts/${encodeURIComponent(id)}`)
   return response.data
 }
 
@@ -103,7 +104,7 @@ export async function registerBroadcast(
   if (input.durationSeconds !== null) {
     form.append('durationSeconds', String(input.durationSeconds))
   }
-  const response = await axios.post<RecordingBroadcastDetail>('/api/broadcasts', form, {
+  const response = await apiClient.post<RecordingBroadcastDetail>('/api/broadcasts', form, {
     onUploadProgress: (event) => {
       if (event.total) onProgress?.(Math.round((event.loaded / event.total) * 100))
     },
@@ -125,13 +126,17 @@ export async function startLiveBroadcast(input: {
   const form = new FormData()
   form.append('title', input.title)
   if (input.thumbnail) form.append('thumbnail', input.thumbnail, 'thumbnail.jpg')
-  const response = await axios.post<StartedLive>('/api/broadcasts/live', form)
+  const response = await apiClient.post<StartedLive>('/api/broadcasts/live', form)
   return response.data
 }
 
 /** 요청 실패를 화면이 쓰기 좋게 푼 것. 페이지는 axios를 직접 다루지 않고 이 값만 본다. */
 export type ApiFailure =
   | { kind: 'notFound' }
+  /** 로그인하지 않았거나 로그인 정보가 맞지 않다(401) */
+  | { kind: 'unauthorized' }
+  /** 서버의 현재 상태와 맞지 않는 요청(409). 이유는 서버가 알려 준 메시지다. */
+  | { kind: 'conflict'; message: string }
   /** 필드 이름(title, video, thumbnail, durationSeconds)별 이유 */
   | { kind: 'invalid'; fieldErrors: Record<string, string> }
   /** 서버가 알려 준 상한(바이트)과 사용자에게 보여 줄 메시지 */
@@ -143,12 +148,16 @@ export function decodeFailure(error: unknown): ApiFailure {
   if (!axios.isAxiosError(error) || !error.response) return { kind: 'unknown' }
   const { status } = error.response
   if (status === 404) return { kind: 'notFound' }
+  if (status === 401) return { kind: 'unauthorized' }
   const data: unknown = error.response.data
   if (typeof data !== 'object' || data === null) return { kind: 'unknown' }
   const { errors, maxBytes, detail } = data as {
     errors?: unknown
     maxBytes?: unknown
     detail?: unknown
+  }
+  if (status === 409) {
+    return { kind: 'conflict', message: typeof detail === 'string' && detail !== '' ? detail : '요청을 처리할 수 없습니다' }
   }
   if (status === 413 && typeof maxBytes === 'number') {
     const message = typeof detail === 'string' && detail !== '' ? detail : sizeLimitMessage(maxBytes)

@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.onair.auth.Csrf;
 import java.nio.file.Path;
 import java.util.Arrays;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +31,7 @@ class VideoPlaybackApiTest extends ApiTestSupport {
 
     @BeforeEach
     void 영상을_등록한다() throws Exception {
-        MvcResult created = mockMvc.perform(multipart("/api/broadcasts")
+        MvcResult created = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", VIDEO_BYTES))
                         .param("title", "재생 테스트"))
                 .andExpect(status().isCreated())

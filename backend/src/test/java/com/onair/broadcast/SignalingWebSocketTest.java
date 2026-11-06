@@ -3,6 +3,7 @@ package com.onair.broadcast;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.onair.auth.Csrf;
 import com.jayway.jsonpath.JsonPath;
 import java.net.URI;
 import java.util.concurrent.BlockingQueue;
@@ -70,6 +71,8 @@ class SignalingWebSocketTest {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("title", "통합 테스트 라이브");
         return rest().post().uri("/api/broadcasts/live")
+                .header("Cookie", Csrf.COOKIE + "=" + Csrf.TOKEN)
+                .header(Csrf.HEADER, Csrf.TOKEN)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body)
                 .retrieve()

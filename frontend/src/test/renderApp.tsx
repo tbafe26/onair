@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { AuthProvider } from '../auth/AuthProvider'
 import { LiveProvider } from '../live/LiveProvider'
 import { routes } from '../routes'
 import { createFakeLive } from './fakeLive'
@@ -14,9 +15,11 @@ export function renderApp(initialPath = '/') {
   const router = createMemoryRouter(routes, { initialEntries: [initialPath] })
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <LiveProvider live={fake.live}>
-        <RouterProvider router={router} />
-      </LiveProvider>
+      <AuthProvider>
+        <LiveProvider live={fake.live}>
+          <RouterProvider router={router} />
+        </LiveProvider>
+      </AuthProvider>
     </QueryClientProvider>,
   )
   return { ...result, router, fake }

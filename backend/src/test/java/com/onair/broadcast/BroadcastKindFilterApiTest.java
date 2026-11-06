@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.onair.auth.Csrf;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ import org.springframework.mock.web.MockMultipartFile;
 class BroadcastKindFilterApiTest extends ApiTestSupport {
 
     int 녹화방송을_등록한다(String title) throws Exception {
-        String body = mockMvc.perform(multipart("/api/broadcasts")
+        String body = mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
                         .file(new MockMultipartFile(
                                 "video", "v.mp4", "video/mp4", BroadcastPagingApiTest.MP4_BYTES))
                         .param("title", title))
