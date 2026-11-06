@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.onair.auth.AppUserRepository;
+import com.onair.auth.AuthClient;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,7 +94,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
         StartedLive started = 시작한다("연결");
         RecordingPeer broadcaster = new RecordingPeer();
 
-        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
 
         assertThat(result.isAccepted()).isTrue();
         assertThat(broadcaster.types()).containsExactly("joined");
@@ -105,7 +106,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
         StartedLive started = 시작한다("키 불일치");
         RecordingPeer intruder = new RecordingPeer();
 
-        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), "wrong-key", intruder);
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), "wrong-key", owner().userId(), intruder);
 
         assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.INVALID_KEY);
         assertThat(intruder.last().type()).isEqualTo("rejected");
@@ -118,9 +119,55 @@ class LiveBroadcastingTest extends ApiTestSupport {
     void 키를_보내지_않아도_invalid_key로_거절된다() {
         StartedLive started = 시작한다("키 없음");
 
-        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), null, new RecordingPeer());
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), null, owner().userId(), new RecordingPeer());
 
         assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.INVALID_KEY);
+    }
+
+    @Test
+    void 소유자가_아닌_사용자는_올바른_키여도_not_owner로_거절되고_연결이_닫힌다() throws Exception {
+        StartedLive started = 시작한다("남의 방송");
+        long otherUserId = AuthClient.signedUp(mockMvc, "other01", "남").userId();
+        RecordingPeer other = new RecordingPeer();
+
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), otherUserId, other);
+
+        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.NOT_OWNER);
+        assertThat(other.last().text("reason")).isEqualTo("not-owner");
+        assertThat(other.closed).isTrue();
+    }
+
+    @Test
+    void 로그인하지_않은_연결은_올바른_키여도_not_owner로_거절된다() {
+        StartedLive started = 시작한다("비로그인 송출");
+        RecordingPeer anonymous = new RecordingPeer();
+
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), null, anonymous);
+
+        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.NOT_OWNER);
+        assertThat(anonymous.closed).isTrue();
+    }
+
+    @Test
+    void 소유자가_아니면_키가_틀려도_not_owner가_invalid_key보다_먼저다() throws Exception {
+        StartedLive started = 시작한다("검사 순서");
+        long otherUserId = AuthClient.signedUp(mockMvc, "other02", "남").userId();
+
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), "wrong-key", otherUserId, new RecordingPeer());
+
+        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.NOT_OWNER);
+    }
+
+    @Test
+    void 종료된_방송은_소유자가_아니어도_ended로_거절된다() {
+        StartedLive started = 시작한다("끝난 방송");
+        RecordingPeer broadcaster = new RecordingPeer();
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
+        live.leave(broadcaster);
+
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), null, new RecordingPeer());
+
+        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.ENDED);
     }
 
     @Test
@@ -128,9 +175,9 @@ class LiveBroadcastingTest extends ApiTestSupport {
         StartedLive started = 시작한다("중복 송출");
         RecordingPeer first = new RecordingPeer();
         RecordingPeer second = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), first);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), first);
 
-        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), second);
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), second);
 
         assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.ALREADY_BROADCASTING);
         assertThat(second.last().text("reason")).isEqualTo("already-broadcasting");
@@ -141,7 +188,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
     void 없는_방송은_not_found로_거절된다() {
         RecordingPeer peer = new RecordingPeer();
 
-        JoinResult result = live.joinAsBroadcaster(9999, "key", peer);
+        JoinResult result = live.joinAsBroadcaster(9999, "key", owner().userId(), peer);
 
         assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.NOT_FOUND);
         assertThat(peer.last().text("reason")).isEqualTo("not-found");
@@ -152,7 +199,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
     void end_메시지를_보내면_종료로_저장되고_송출자에게_ended가_간다() {
         StartedLive started = 시작한다("종료");
         RecordingPeer broadcaster = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
 
         live.relay(broadcaster, SignalMessage.of("end"));
 
@@ -167,7 +214,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
     void 송출자_연결이_끊기면_종료로_저장된다() {
         StartedLive started = 시작한다("끊김");
         RecordingPeer broadcaster = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
 
         live.leave(broadcaster);
 
@@ -179,7 +226,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
         StartedLive started = 시작한다("다른 연결");
         RecordingPeer broadcaster = new RecordingPeer();
         RecordingPeer stranger = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
 
         live.relay(stranger, SignalMessage.of("end"));
         live.leave(stranger);
@@ -192,11 +239,11 @@ class LiveBroadcastingTest extends ApiTestSupport {
     void 종료된_방송에는_올바른_키로도_다시_연결할_수_없고_방송_중이_되지_않는다() {
         StartedLive started = 시작한다("재시작 불가");
         RecordingPeer first = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), first);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), first);
         live.relay(first, SignalMessage.of("end"));
         RecordingPeer again = new RecordingPeer();
 
-        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), again);
+        JoinResult result = live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), again);
 
         assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.ENDED);
         assertThat(again.last().text("reason")).isEqualTo("ended");
@@ -207,7 +254,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
     void 종료된_뒤에_보낸_end는_종료_시각을_바꾸지_않는다() {
         StartedLive started = 시작한다("한 번만 종료");
         RecordingPeer broadcaster = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
         live.relay(broadcaster, SignalMessage.of("end"));
         var endedAt = 저장된_방송(started).endedAt();
 
@@ -224,7 +271,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
     OnAir 송출을_시작한다(String title) {
         StartedLive started = 시작한다(title);
         RecordingPeer broadcaster = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
         broadcaster.received.clear();
         return new OnAir(started, broadcaster);
     }
@@ -433,7 +480,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
         LiveBroadcasting limited = 상한이_있는_모듈(2);
         StartedLive started = limited.start(new StartLiveCommand("상한 설정", null), owner().userId());
         RecordingPeer broadcaster = new RecordingPeer();
-        limited.joinAsBroadcaster(started.broadcastId(), started.streamKey(), broadcaster);
+        limited.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
 
         assertThat(limited.joinAsViewer(started.broadcastId(), new RecordingPeer()).isAccepted()).isTrue();
         assertThat(limited.joinAsViewer(started.broadcastId(), new RecordingPeer()).isAccepted()).isTrue();
@@ -565,7 +612,7 @@ class LiveBroadcastingTest extends ApiTestSupport {
         live.expireSilentBroadcasters(clock.instant().plusSeconds(31));
         RecordingPeer again = new RecordingPeer();
 
-        JoinResult result = live.joinAsBroadcaster(onAir.started().broadcastId(), onAir.started().streamKey(), again);
+        JoinResult result = live.joinAsBroadcaster(onAir.started().broadcastId(), onAir.started().streamKey(), owner().userId(), again);
 
         assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.ENDED);
     }

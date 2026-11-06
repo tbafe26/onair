@@ -24,6 +24,7 @@ class SignalingWebSocketHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(SignalingWebSocketHandler.class);
     private static final String PEER_ATTRIBUTE = "peer";
     private static final String BROADCAST_ID_ATTRIBUTE = "broadcastId";
+    static final String USER_ID_ATTRIBUTE = "userId";
     private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() { };
 
     private final LiveBroadcasting live;
@@ -60,9 +61,9 @@ class SignalingWebSocketHandler extends TextWebSocketHandler {
         if (SignalMessage.JOIN_BROADCASTER.equals(type)) {
             Long id = (Long) session.getAttributes().get(BROADCAST_ID_ATTRIBUTE);
             if (id == null) {
-                live.joinAsBroadcaster(-1, null, peer);
+                live.joinAsBroadcaster(-1, null, null, peer);
             } else {
-                live.joinAsBroadcaster(id, message.text(SignalMessage.Field.STREAM_KEY), peer);
+                live.joinAsBroadcaster(id, message.text(SignalMessage.Field.STREAM_KEY), userId(session), peer);
             }
         } else if (SignalMessage.JOIN_VIEWER.equals(type)) {
             Long id = (Long) session.getAttributes().get(BROADCAST_ID_ATTRIBUTE);
@@ -82,6 +83,11 @@ class SignalingWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         log.debug("시그널링 전송 오류: {}", exception.getClass().getSimpleName());
+    }
+
+    /** 핸드셰이크 때 복사해 둔 로그인 사용자 id. 로그인하지 않았으면 null이다. */
+    private static Long userId(WebSocketSession session) {
+        return (Long) session.getAttributes().get(USER_ID_ATTRIBUTE);
     }
 
     /** /api/broadcasts/{id}/signal에서 id를 읽는다. 숫자가 아니면 null이다. */

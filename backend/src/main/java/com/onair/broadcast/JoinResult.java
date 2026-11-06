@@ -5,6 +5,7 @@ public record JoinResult(Rejection rejection) {
 
     /** 거절 사유. 값은 시그널링 메시지의 reason으로 나간다. */
     public enum Rejection {
+        NOT_OWNER("not-owner"),
         INVALID_KEY("invalid-key"),
         ALREADY_BROADCASTING("already-broadcasting"),
         ENDED("ended"),

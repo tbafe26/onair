@@ -28,6 +28,8 @@ class SignalingWebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(handler, SIGNAL_PATH).setAllowedOriginPatterns(allowedOriginPatterns);
+        registry.addHandler(handler, SIGNAL_PATH)
+                .addInterceptors(new LoginUserHandshakeInterceptor())
+                .setAllowedOriginPatterns(allowedOriginPatterns);
     }
 }
