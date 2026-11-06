@@ -65,7 +65,8 @@ cd frontend && pnpm lint && pnpm test && pnpm build
 ### 경로별 방어
 
 - `.gitignore`: `.env`, 인증서·개인 키·키 저장소, 인증 정보가 든 로컬 설정, 로그를 제외한다. 새 종류의 비밀 파일이 생기면 먼저 규칙을 추가한다.
-- git 훅(`.githooks/`): pre-commit은 스테이징된 변경을, pre-push는 올라갈 커밋을 gitleaks로 검사해 막는다. clone한 뒤 `git config core.hooksPath .githooks`로 한 번 켠다. gitleaks가 없으면 훅이 커밋과 push를 막는다. `--no-verify`로 훅을 건너뛰지 않는다.
+- git 훅(`.githooks/`): pre-commit은 스테이징된 변경을, commit-msg는 커밋 메시지를, pre-push는 올라갈 커밋을 검사해 막는다. 비밀 값은 gitleaks가, 개인 정보(사설 IP, 사용자 경로, 이 PC의 호스트·Wi-Fi 이름과 LAN 주소)는 `check-public-text.js`가 맡는다. 이 PC의 실제 값은 실행할 때 읽어 비교만 하므로 저장소에 남지 않는다. clone한 뒤 `git config core.hooksPath .githooks`로 한 번 켠다. gitleaks나 node가 없으면 훅이 커밋과 push를 막는다. `--no-verify`로 훅을 건너뛰지 않는다.
+- 이슈·PR·릴리스·댓글: Claude Code의 PreToolUse 훅(`.claude/settings.local.json`, git 제외)이 `gh`로 글을 올리는 명령과 본문 파일을 `check-public-text.js --hook`으로 검사해 막는다. 사람이 직접 올릴 때는 `node .githooks/check-public-text.js <본문 파일>`로 먼저 검사한다.
 - CI: gitleaks가 커밋 이력 전체를 검사하고, `main` 보호 규칙이 이 검사의 통과를 병합 조건으로 건다.
 - GitHub: secret scanning과 push protection이 알려진 형식의 토큰이 담긴 push를 거절한다.
 - 코드: 비밀 값과 송출 키를 로그, 오류 응답, 조회 응답에 넣지 않는다. 프런트에서 `VITE_`로 시작하는 환경변수는 번들에 그대로 들어가므로 비밀 값을 두지 않는다.
