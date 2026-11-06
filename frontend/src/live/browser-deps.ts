@@ -1,5 +1,7 @@
 import { decodeFailure, startLiveBroadcast } from '../api/broadcasts'
 import type { BroadcasterDeps, SignalingChannel, SignalingHandlers } from './broadcaster'
+import { createBrowserPeerConnection } from './peer'
+import type { ViewerDeps } from './viewer'
 
 function signalingUrl(broadcastId: number): string {
   const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -58,7 +60,14 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
       : null,
   startLive,
   openSignaling,
+  createPeerConnection: createBrowserPeerConnection,
   now: () => Date.now(),
   requestWakeLock:
     'wakeLock' in navigator ? () => navigator.wakeLock.request('screen') : undefined,
+}
+
+/** 실제 브라우저 API를 시청 모듈에 연결한다. */
+export const browserViewerDeps: ViewerDeps = {
+  openSignaling,
+  createPeerConnection: createBrowserPeerConnection,
 }

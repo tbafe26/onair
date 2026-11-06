@@ -1,5 +1,6 @@
 // 송출 모듈. React와 무관하고, 카메라 열기·방송 시작·시그널링 연결은 바깥에서 받는다(deps).
 // 실제로는 브라우저 API(browser-deps.ts)를, 테스트에서는 가짜를 넣는다.
+import type { PeerConnectionLike } from './peer'
 
 export type CameraUnavailableReason = 'denied' | 'notFound' | 'insecure'
 
@@ -9,7 +10,7 @@ export type BroadcasterState =
   /** startFailure는 직전 송출 시작이 실패한 이유다. 미리보기로 돌아와 다시 시도할 수 있다. */
   | { phase: 'previewing'; stream: MediaStream; startFailure: string | null }
   | { phase: 'starting'; stream: MediaStream }
-  | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number }
+  | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number; viewerCount: number }
   | { phase: 'ended'; broadcastId: number }
 
 export interface SignalMessage {
@@ -38,6 +39,8 @@ export interface BroadcasterDeps {
   /** 라이브방송을 만든다. 실패하면 사용자에게 보여 줄 메시지를 담은 Error를 던진다. */
   startLive(input: { title: string; thumbnail: Blob | null }): Promise<{ id: number; streamKey: string }>
   openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel>
+  /** 시청자마다 PeerConnection을 만든다. */
+  createPeerConnection(): PeerConnectionLike
   now(): number
   /** 송출 중 화면이 꺼지지 않게 잠근다. 지원하지 않으면 없다. */
   requestWakeLock?: () => Promise<WakeLockHandle>
@@ -75,6 +78,8 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   let generation = 0
   let channel: SignalingChannel | null = null
   let wakeLock: WakeLockHandle | null = null
+  // 시청자 번호 -> 그 시청자와의 연결. queue는 협상 단계를 도착한 순서대로 하나씩 처리하게 한다.
+  const viewers = new Map<string, { connection: PeerConnectionLike; queue: Promise<void> }>()
   let pendingJoin: { resolve(): void; reject(error: Error): void } | null = null
   let pendingEnd: { promise: Promise<void>; resolve(): void; timer: ReturnType<typeof setTimeout> } | null = null
 
@@ -93,6 +98,76 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     if (lock) void lock.release().catch(() => undefined)
   }
 
+  function closeViewer(viewerId: string) {
+    viewers.get(viewerId)?.connection.close()
+    viewers.delete(viewerId)
+  }
+
+  function closeAllViewers() {
+    viewers.forEach((viewer) => viewer.connection.close())
+    viewers.clear()
+  }
+
+  /** 시청자 한 명과의 협상 단계를 그 시청자의 순서 뒤에 붙인다. 실패하면 그 시청자의 연결만 닫는다. */
+  function enqueue(viewerId: string, task: (connection: PeerConnectionLike) => Promise<void>) {
+    const viewer = viewers.get(viewerId)
+    if (!viewer) return
+    viewer.queue = viewer.queue.then(async () => {
+      if (viewers.get(viewerId) !== viewer) return
+      try {
+        await task(viewer.connection)
+      } catch {
+        closeViewer(viewerId)
+      }
+    })
+  }
+
+  function offerTo(viewerId: string, stream: MediaStream) {
+    const connection = deps.createPeerConnection()
+    viewers.set(viewerId, { connection, queue: Promise.resolve() })
+    stream.getTracks().forEach((track) => connection.addTrack(track, stream))
+    connection.onIceCandidate((candidate) => {
+      if (viewers.get(viewerId)?.connection === connection) {
+        channel?.send({ type: 'candidate', to: viewerId, candidate })
+      }
+    })
+    connection.onFailed(() => {
+      if (viewers.get(viewerId)?.connection === connection) closeViewer(viewerId)
+    })
+    enqueue(viewerId, async () => {
+      const offer = await connection.createOffer()
+      await connection.setLocalDescription(offer)
+      channel?.send({ type: 'offer', to: viewerId, sdp: offer.sdp })
+    })
+  }
+
+  function handleViewerMessage(message: SignalMessage) {
+    const viewerId = message.type === 'viewer-joined' || message.type === 'viewer-left' ? message.viewerId : message.from
+    if (typeof viewerId !== 'string') return
+    switch (message.type) {
+      case 'viewer-joined':
+        if (current.phase === 'onAir' && !viewers.has(viewerId)) offerTo(viewerId, current.stream)
+        break
+      case 'viewer-left':
+        closeViewer(viewerId)
+        break
+      case 'answer': {
+        const sdp = message.sdp
+        if (typeof sdp === 'string') {
+          enqueue(viewerId, (connection) => connection.setRemoteDescription({ type: 'answer', sdp }))
+        }
+        break
+      }
+      case 'candidate': {
+        const candidate = message.candidate
+        if (typeof candidate === 'object' && candidate !== null) {
+          enqueue(viewerId, (connection) => connection.addIceCandidate(candidate as RTCIceCandidateInit))
+        }
+        break
+      }
+    }
+  }
+
   function closeChannel() {
     const open = channel
     channel = null
@@ -104,6 +179,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     const stream = streamOf(current)
     if (stream) stopTracks(stream)
     releaseWakeLock()
+    closeAllViewers()
     closeChannel()
     if (pendingEnd) {
       clearTimeout(pendingEnd.timer)
@@ -148,6 +224,11 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
               pendingJoin = null
             } else if (message.type === 'ended' && current.phase === 'onAir') {
               finish(current.broadcastId)
+            } else if (message.type === 'viewer-count' && current.phase === 'onAir') {
+              const count = message.count
+              if (typeof count === 'number') set({ ...current, viewerCount: count })
+            } else {
+              handleViewerMessage(message)
             }
           },
           onClose() {
@@ -199,7 +280,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         if (session !== generation) return
         await joinAsBroadcaster(started.id, started.streamKey)
         if (session !== generation) return
-        set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now() })
+        set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0 })
         if (deps.requestWakeLock) {
           void deps.requestWakeLock().then(
             (lock) => {
@@ -236,6 +317,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       const stream = streamOf(current)
       if (stream) stopTracks(stream)
       releaseWakeLock()
+      closeAllViewers()
       closeChannel()
       pendingJoin = null
       if (pendingEnd) {
