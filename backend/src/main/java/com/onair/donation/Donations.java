@@ -29,6 +29,9 @@ public class Donations implements BroadcastDeletionListener {
     static final long MAX_AMOUNT = 500_000;
     static final long AMOUNT_UNIT = 1_000;
     // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
+    // 사용자가 결제창을 닫았을 때 토스가 failUrl로 넘기는 코드.
+    static final String USER_CANCELED = "PAY_PROCESS_CANCELED";
+    static final int MAX_FAILURE_CODE_LENGTH = 100;
     static final String ORDER_NAME = "온에어 방송 후원";
 
     private final DonationRepository donations;
@@ -137,6 +140,25 @@ public class Donations implements BroadcastDeletionListener {
             return DonationView.of(donation);
         }
         throw new DonationNotPayableException();
+    }
+
+    /**
+     * 결제창이 알려 준 실패·취소를 기록한다. 본인 주문(401, 404, 403)이고, 대기일 때만 바꾼다:
+     * 사용자가 결제창을 닫으면 취소, 그 밖의 코드는 실패다. 이미 정해진 주문은 그대로 두고 현재 상태를 돌려준다.
+     */
+    public DonationStatus recordFailure(Long userId, String orderId, String code) {
+        long donorId = Requester.id(userId);
+        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
+        if (donation.getDonor().getId() != donorId) {
+            throw new NotDonorException();
+        }
+        String stored = code.length() > MAX_FAILURE_CODE_LENGTH ? code.substring(0, MAX_FAILURE_CODE_LENGTH) : code;
+        if (USER_CANCELED.equals(code)) {
+            donations.cancelIfPending(donation.getId(), stored);
+        } else {
+            donations.failIfPending(donation.getId(), stored);
+        }
+        return donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new).getStatus();
     }
 
     private void fail(Donation donation, String code) {

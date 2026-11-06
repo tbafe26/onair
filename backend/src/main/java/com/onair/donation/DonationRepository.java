@@ -33,4 +33,11 @@ interface DonationRepository extends JpaRepository<Donation, Long> {
     @Query("update Donation d set d.status = com.onair.donation.DonationStatus.FAILED, d.failureCode = :code"
             + " where d.id = :id and d.status = com.onair.donation.DonationStatus.PENDING")
     int failIfPending(@Param("id") long id, @Param("code") String code);
+
+    /** 대기일 때만 취소로 바꾸고 코드를 남긴다. */
+    @Transactional
+    @Modifying(clearAutomatically = true)
+    @Query("update Donation d set d.status = com.onair.donation.DonationStatus.CANCELED, d.failureCode = :code"
+            + " where d.id = :id and d.status = com.onair.donation.DonationStatus.PENDING")
+    int cancelIfPending(@Param("id") long id, @Param("code") String code);
 }
