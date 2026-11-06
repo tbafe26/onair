@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
 import type { BroadcasterState, CameraUnavailableReason } from '../live/broadcaster'
 import { fakeStream } from '../test/fakeLive'
+import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
@@ -22,6 +23,7 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  signedInAs()
   images.deps = {
     decode: async () => ({ width: 4000, height: 3000, source: null, release: () => {} }),
     encodeJpeg: async () => new Blob([new Uint8Array(500)], { type: 'image/jpeg' }),
@@ -36,6 +38,7 @@ beforeEach(() => {
         kind: 'LIVE',
         title: '내 라이브',
         createdAt: '2026-03-15T12:00:00Z',
+        owner: { id: 1, nickname: '방송러' },
         thumbnailUrl: null,
         status: 'ENDED',
         endedAt: '2026-03-15T12:10:00Z',
@@ -89,7 +92,7 @@ async function openOnAir(extra: Parameters<typeof goOnAir>[1] = {}) {
 
 it('화면에 들어오면 카메라를 열고, 떠나면 송출 모듈을 정리한다', async () => {
   const app = renderApp('/broadcasts/live/new')
-  expect(app.fake.broadcaster.open).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(app.fake.broadcaster.open).toHaveBeenCalledTimes(1))
   expect(app.fake.broadcaster.dispose).not.toHaveBeenCalled()
 
   app.unmount()
@@ -117,7 +120,7 @@ describe.each<[CameraUnavailableReason, string, RegExp]>([
 it('카메라를 켜는 동안 안내하고, 켜지면 미리보기와 제목 입력, 송출 시작 버튼을 보여 준다', async () => {
   const app = renderApp('/broadcasts/live/new')
 
-  expect(screen.getByRole('status')).toHaveTextContent('카메라와 마이크를 켜는 중')
+  expect(await screen.findByRole('status')).toHaveTextContent('카메라와 마이크를 켜는 중')
   expect(screen.queryByLabelText('제목')).not.toBeInTheDocument()
 
   preview(app)

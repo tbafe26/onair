@@ -10,6 +10,7 @@ function detailResponse(id: number, title: string, thumbnailUrl: string | null) 
     kind: 'RECORDING',
     title,
     createdAt: '2026-03-15T12:00:00Z',
+    owner: { id: 1, nickname: '방송러' },
     video: {
       url: `/api/broadcasts/${id}/video`,
       contentType: 'video/webm',
@@ -26,6 +27,7 @@ function summary(id: number, title: string, thumbnailUrl: string | null) {
     kind: 'RECORDING',
     title,
     createdAt: '2026-02-01T12:00:00Z',
+    owner: { id: 1, nickname: '방송러' },
     durationSeconds: 60,
     thumbnailUrl,
   }
@@ -131,4 +133,18 @@ it('없는 방송이면 안내와 목록으로 돌아가는 버튼을 보여 준
   expect(
     within(screen.getByRole('main')).getByRole('link', { name: '목록으로 돌아가기' }),
   ).toHaveAttribute('href', '/')
+})
+
+it('방송 상세에 소유자 닉네임을 보여 준다', async () => {
+  server.use(
+    http.get('/api/broadcasts/7', () =>
+      HttpResponse.json({ ...detailResponse(7, '상세 방송', null), owner: { id: 9, nickname: '채널주인' } }),
+    ),
+    http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
+  )
+
+  renderApp('/broadcasts/7')
+
+  await screen.findByRole('heading', { name: '상세 방송' })
+  expect(screen.getByText('채널주인')).toBeInTheDocument()
 })

@@ -10,6 +10,7 @@ function live(id: number, status: 'ON_AIR' | 'ENDED', thumbnailUrl: string | nul
     kind: 'LIVE',
     title: `라이브 ${id}`,
     createdAt: '2026-03-15T12:00:00Z',
+    owner: { id: 1, nickname: '방송러' },
     thumbnailUrl,
     status,
   }
@@ -68,6 +69,7 @@ it('녹화방송 카드에는 배지가 없다', async () => {
             kind: 'RECORDING',
             title: '녹화 1',
             createdAt: '2026-03-15T12:00:00Z',
+            owner: { id: 1, nickname: '방송러' },
             durationSeconds: 60,
             thumbnailUrl: null,
           },

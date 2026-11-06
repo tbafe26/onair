@@ -8,12 +8,19 @@ export type BroadcastKind = 'RECORDING' | 'LIVE'
 /** 라이브방송 상태. 방송 중에서 종료로만 바뀐다. */
 export type LiveStatus = 'ON_AIR' | 'ENDED'
 
+/** 방송 소유자. 카드와 상세에서 채널 이름처럼 닉네임을 보여 준다. */
+export interface BroadcastOwner {
+  id: number
+  nickname: string
+}
+
 // 목록 카드에 쓰는 방송 요약. 썸네일이 없으면 thumbnailUrl이 null이다.
 export interface RecordingBroadcastSummary {
   id: number
   kind: 'RECORDING'
   title: string
   createdAt: string
+  owner: BroadcastOwner
   durationSeconds: number | null
   thumbnailUrl: string | null
 }
@@ -24,6 +31,7 @@ export interface LiveBroadcastSummary {
   kind: 'LIVE'
   title: string
   createdAt: string
+  owner: BroadcastOwner
   thumbnailUrl: string | null
   status: LiveStatus
 }
@@ -40,6 +48,7 @@ export interface RecordingBroadcastDetail {
   kind: 'RECORDING'
   title: string
   createdAt: string
+  owner: BroadcastOwner
   video: {
     url: string
     contentType: string

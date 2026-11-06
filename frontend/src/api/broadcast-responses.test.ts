@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import contract from '../../../contracts/broadcast-responses.json'
 import type {
+  BroadcastOwner,
   LiveBroadcastDetail,
   LiveBroadcastSummary,
   RecordingBroadcastDetail,
@@ -10,11 +11,14 @@ import type {
 // 타입에 필드가 모자라거나 남으면 satisfies가 tsc(pnpm build)에서 실패하고,
 // 계약 파일과 어긋나면 아래 Object.keys 대조가 vitest에서 실패한다.
 // null 가능 필드는 일부러 null로 둔다(서버는 null도 직렬화한다).
+const owner = { id: 1, nickname: '방송러' } satisfies BroadcastOwner
+
 const recordingSummary = {
   id: 1,
   kind: 'RECORDING',
   title: '제목',
   createdAt: '2026-01-01T00:00:00Z',
+  owner,
   durationSeconds: null,
   thumbnailUrl: null,
 } satisfies RecordingBroadcastSummary
@@ -24,6 +28,7 @@ const recordingDetail = {
   kind: 'RECORDING',
   title: '제목',
   createdAt: '2026-01-01T00:00:00Z',
+  owner,
   video: {
     url: '/api/broadcasts/1/video',
     contentType: 'video/mp4',
@@ -38,6 +43,7 @@ const liveSummary = {
   kind: 'LIVE',
   title: '제목',
   createdAt: '2026-01-01T00:00:00Z',
+  owner,
   thumbnailUrl: null,
   status: 'ON_AIR',
 } satisfies LiveBroadcastSummary
@@ -60,6 +66,10 @@ function expectMatches(example: object, shape: Shape) {
 }
 
 describe('방송 응답 타입이 contracts/broadcast-responses.json과 같다', () => {
+  it('소유자', () => {
+    expectMatches(owner, contract.owner)
+  })
+
   it('녹화방송 목록 항목', () => {
     expectMatches(recordingSummary, contract.RECORDING.summary)
   })

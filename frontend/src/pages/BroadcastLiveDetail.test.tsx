@@ -20,6 +20,7 @@ function liveDetail(status: 'ON_AIR' | 'ENDED', endedAt: string | null) {
     kind: 'LIVE',
     title: '상세 라이브',
     createdAt: '2026-03-15T12:00:00Z',
+    owner: { id: 1, nickname: '방송러' },
     thumbnailUrl: null,
     status,
     endedAt,
@@ -37,6 +38,7 @@ function stubLive(status: 'ON_AIR' | 'ENDED', endedAt: string | null) {
             kind: 'LIVE',
             title: '다른 라이브',
             createdAt: '2026-03-15T12:00:00Z',
+            owner: { id: 1, nickname: '방송러' },
             thumbnailUrl: null,
             status: 'ON_AIR',
           },
@@ -45,6 +47,7 @@ function stubLive(status: 'ON_AIR' | 'ENDED', endedAt: string | null) {
             kind: 'RECORDING',
             title: '다른 녹화',
             createdAt: '2026-03-14T12:00:00Z',
+            owner: { id: 1, nickname: '방송러' },
             durationSeconds: 30,
             thumbnailUrl: null,
           },
@@ -192,4 +195,18 @@ it('상세 화면을 떠나면 시청 모듈을 정리한다', async () => {
   await user.click(await within(panel).findByRole('link', { name: /다른 녹화/ }))
 
   await waitFor(() => expect(app.fake.viewer.dispose).toHaveBeenCalled())
+})
+
+it('라이브방송 상세에 소유자 닉네임을 보여 준다', async () => {
+  server.use(
+    http.get('/api/broadcasts/5', () =>
+      HttpResponse.json({ ...liveDetail('ENDED', '2026-03-15T13:00:00Z'), owner: { id: 9, nickname: '채널주인' } }),
+    ),
+    http.get('/api/broadcasts', () => HttpResponse.json({ items: [], hasNext: false })),
+  )
+
+  renderApp('/broadcasts/5')
+
+  await screen.findByRole('heading', { name: '상세 라이브' })
+  expect(screen.getByText('채널주인')).toBeInTheDocument()
 })

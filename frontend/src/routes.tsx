@@ -1,4 +1,5 @@
 import type { RouteObject } from 'react-router-dom'
+import { RequireLogin } from './auth/RequireLogin'
 import { AppShell } from './layout/AppShell'
 import { BroadcastCreatePage } from './pages/BroadcastCreatePage'
 import { BroadcastDetailPage } from './pages/BroadcastDetailPage'
@@ -12,8 +13,22 @@ export const routes: RouteObject[] = [
     element: <AppShell />,
     children: [
       { path: '/', element: <BroadcastListPage /> },
-      { path: '/broadcasts/new', element: <BroadcastCreatePage /> },
-      { path: '/broadcasts/live/new', element: <LiveBroadcastPage /> },
+      {
+        path: '/broadcasts/new',
+        element: (
+          <RequireLogin>
+            <BroadcastCreatePage />
+          </RequireLogin>
+        ),
+      },
+      {
+        path: '/broadcasts/live/new',
+        element: (
+          <RequireLogin>
+            <LiveBroadcastPage />
+          </RequireLogin>
+        ),
+      },
       { path: '/broadcasts/:id', element: <BroadcastDetailPage /> },
       { path: '/login', element: <LoginPage /> },
       { path: '/signup', element: <SignupPage /> },
