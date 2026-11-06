@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.unit.DataSize;
@@ -130,10 +129,27 @@ class RegistrationRules {
 
     // 화면(upload-rules.ts)과 같은 기준으로 앞뒤 공백을 뗀다: 유니코드 White_Space 속성 문자(줄 바꿈 없는 공백 포함).
     // String.strip()은 줄 바꿈 없는 공백(U+00A0)을 남기고 JS trim()은 지워서 둘의 결과가 달랐다.
-    private static final Pattern EDGE_WHITE_SPACE = Pattern.compile("^\\p{IsWhite_Space}+|\\p{IsWhite_Space}+$");
-
+    // 정규식(\p{IsWhite_Space}+$)은 공백이 길게 이어진 입력에서 길이의 제곱만큼 느려져 앞뒤에서 한 번씩만 훑는다.
     static String trimWhiteSpace(String value) {
-        return value == null ? "" : EDGE_WHITE_SPACE.matcher(value).replaceAll("");
+        if (value == null) {
+            return "";
+        }
+        int start = 0;
+        int end = value.length();
+        while (start < end && isWhiteSpace(value.codePointAt(start))) {
+            start += Character.charCount(value.codePointAt(start));
+        }
+        while (end > start && isWhiteSpace(value.codePointBefore(end))) {
+            end -= Character.charCount(value.codePointBefore(end));
+        }
+        return value.substring(start, end);
+    }
+
+    // 유니코드 White_Space 속성: 공백 분류(Zs, Zl, Zp)와 제어 문자 U+0009~U+000D, U+0085
+    private static boolean isWhiteSpace(int codePoint) {
+        return Character.isSpaceChar(codePoint)
+                || (codePoint >= 0x09 && codePoint <= 0x0D)
+                || codePoint == 0x85;
     }
 
     private static boolean isJpeg(byte[] head) {
