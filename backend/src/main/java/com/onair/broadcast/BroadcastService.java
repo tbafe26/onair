@@ -1,15 +1,11 @@
 package com.onair.broadcast;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 /** 방송 등록과 조회의 흐름만 맡는다. 등록 규칙은 RegistrationRules, 파일 보관은 MediaStorage가 맡는다. */
 @Service
@@ -34,10 +30,10 @@ class BroadcastService {
         RegisterRecordingCommand command = rules.validate(form);
 
         try (MediaStorage.Batch batch = storage.begin()) {
-            String videoKey = store(batch, command.video().file());
+            String videoKey = MultipartInputs.store(batch, command.video().file());
             String thumbnailKey = command.thumbnail() == null
                     ? null
-                    : store(batch, command.thumbnail());
+                    : MultipartInputs.store(batch, command.thumbnail());
 
             Video video = new Video(
                     videoKey,
@@ -123,13 +119,5 @@ class BroadcastService {
 
     private RecordingBroadcast findRecording(long id) {
         return repository.findRecordingWithVideoById(id).orElseThrow(() -> new BroadcastNotFoundException(id));
-    }
-
-    private static String store(MediaStorage.Batch batch, MultipartFile file) {
-        try (InputStream in = MultipartInputs.open(file)) {
-            return batch.store(in);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 }
