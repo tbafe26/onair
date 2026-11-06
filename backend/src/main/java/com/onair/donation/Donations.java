@@ -113,14 +113,37 @@ public class Donations implements BroadcastDeletionListener {
                 }
             }
         }
+        markConfirmed(donation, paymentKey);
+        // 이긴 쪽과 진 쪽 모두 저장된 확정 결과를 읽어 돌려준다.
+        return decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new), paymentKey);
+    }
+
+    /**
+     * 결제 서비스의 승인 통지를 처리한다. 통지 본문은 믿지 않고 결제 키로 결제를 다시 조회해, 승인과 같은 대조와
+     * 조건부 갱신으로 확정한다. 모르는 주문, 이미 끝난 주문, 조회 실패, 대조 실패는 아무것도 바꾸지 않고 돌아온다.
+     */
+    public void handlePaymentNotification(String paymentKey, String orderId) {
+        Donation donation = donations.findByOrderId(orderId).orElse(null);
+        if (donation == null || donation.getStatus() != DonationStatus.PENDING) {
+            return;
+        }
+        try {
+            if (payments.find(paymentKey) instanceof PaymentResult.Paid paid && matches(paid, donation, paymentKey)) {
+                markConfirmed(donation, paymentKey);
+            }
+        } catch (PaymentGatewayUnavailableException | DonationNotPayableException e) {
+            // 결제 서비스가 다시 통지하거나 사용자가 승인하면 된다.
+        }
+    }
+
+    // 대기 후원을 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
+    private void markConfirmed(Donation donation, String paymentKey) {
         try {
             donations.confirmIfPending(donation.getId(), paymentKey, Instant.now(clock));
         } catch (DataIntegrityViolationException e) {
             // 같은 결제 키가 다른 후원에 이미 쓰였다.
             throw new DonationNotPayableException();
         }
-        // 이긴 쪽과 진 쪽 모두 저장된 확정 결과를 읽어 돌려준다.
-        return decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new), paymentKey);
     }
 
     // 결제 서비스가 돌려준 결제가 저장된 후원과 맞는지 본다: 상태 DONE, 주문 번호, 금액, 결제 키.
