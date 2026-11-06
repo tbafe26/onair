@@ -1,0 +1,15 @@
+#!/bin/sh
+# 커밋 직전에 스테이징된 변경에서 비밀 값(API 키, 토큰, 비밀번호 등)을 찾는다.
+# 찾으면 커밋을 막는다. 켜는 방법: git config core.hooksPath .githooks
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks가 없어 커밋을 막았습니다. 설치한 뒤 다시 커밋하세요." >&2
+  echo "  Windows: winget install Gitleaks.Gitleaks / macOS: brew install gitleaks" >&2
+  exit 1
+fi
+
+if ! gitleaks git --pre-commit --staged --redact --no-banner; then
+  echo "[pre-commit] 비밀 값으로 보이는 내용이 있어 커밋을 막았습니다." >&2
+  echo "  해당 값을 지우고 .env(git 제외)로 옮긴 뒤 다시 커밋하세요." >&2
+  exit 1
+fi

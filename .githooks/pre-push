@@ -1,0 +1,32 @@
+#!/bin/sh
+# push 직전에 이번에 올라갈 커밋들을 다시 검사한다.
+# --no-verify로 pre-commit을 건너뛴 커밋이나, 훅을 켜기 전에 만든 커밋도 여기서 걸린다.
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-push] gitleaks가 없어 push를 막았습니다. 설치한 뒤 다시 push하세요." >&2
+  echo "  Windows: winget install Gitleaks.Gitleaks / macOS: brew install gitleaks" >&2
+  exit 1
+fi
+
+zero=0000000000000000000000000000000000000000
+status=0
+
+# 표준 입력 한 줄: <로컬 ref> <로컬 sha> <원격 ref> <원격 sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # 브랜치 삭제 push는 검사할 내용이 없다.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # 새 브랜치: 원격에 아직 없는 커밋만 검사한다.
+    range="$local_sha --not --remotes"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  if ! gitleaks git --log-opts="$range" --redact --no-banner; then
+    echo "[pre-push] $local_ref 에 비밀 값으로 보이는 내용이 있어 push를 막았습니다." >&2
+    status=1
+  fi
+done
+
+exit $status

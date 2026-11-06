@@ -1,0 +1,203 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  schedule:
+    # 매주 월요일 03:00 UTC (한국 시간 12:00). CodeQL 정기 검사용이다.
+    - cron: "0 3 * * 1"
+
+# 같은 ref에 새 실행이 오면 이전 실행을 취소한다.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 기본 토큰은 읽기 권한만 준다. 필요한 job만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  # 1단계: 테스트 (백엔드와 프런트가 동시에 돈다)
+  test-backend:
+    name: 테스트 / 백엔드
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: 백엔드 테스트
+        working-directory: backend
+        run: ./gradlew test
+
+  test-frontend:
+    name: 테스트 / 프런트
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: 의존성 설치
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: 프런트 테스트
+        working-directory: frontend
+        run: pnpm test
+
+  # 2단계: 품질 검사 (테스트가 둘 다 통과해야 돈다)
+  quality-backend:
+    name: 품질 / 백엔드 컴파일 경고
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: 컴파일 (-Xlint:all -Werror는 build.gradle.kts에 설정)
+        working-directory: backend
+        run: ./gradlew compileJava compileTestJava
+
+  quality-frontend:
+    name: 품질 / 프런트 lint
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: 의존성 설치
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: lint
+        working-directory: frontend
+        run: pnpm lint
+
+  codeql:
+    name: 품질 / CodeQL (${{ matrix.language }})
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - if: matrix.language == 'java-kotlin'
+        name: 백엔드 컴파일 (CodeQL 추적용)
+        working-directory: backend
+        run: ./gradlew compileJava --no-daemon
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  gitleaks:
+    name: 품질 / gitleaks
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 커밋 이력 전체를 검사한다.
+          fetch-depth: 0
+      - name: gitleaks 실행
+        # 라이선스 키가 필요 없는 공식 CLI를 직접 내려받아 쓴다.
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks git --redact --verbose
+
+  dependency-review:
+    name: 품질 / Dependency Review
+    if: github.event_name == 'pull_request'
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+
+  # 3단계: 빌드·패키징 (품질 검사가 모두 통과해야 돈다)
+  package-backend:
+    name: 패키징 / 백엔드 jar
+    # dependency-review는 PR에서만 돌고 push에서는 건너뛴다. 건너뜀은 통과로 본다.
+    needs: [quality-backend, quality-frontend, codeql, gitleaks, dependency-review]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: 실행 jar 빌드
+        working-directory: backend
+        run: ./gradlew bootJar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/build/libs/*.jar
+          if-no-files-found: error
+
+  package-frontend:
+    name: 패키징 / 프런트 정적 파일
+    needs: [quality-backend, quality-frontend, codeql, gitleaks, dependency-review]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: 의존성 설치
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: 빌드
+        working-directory: frontend
+        run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
