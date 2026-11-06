@@ -117,6 +117,22 @@ class DonationConfirmApiTest extends DonationApiTestSupport {
     }
 
     @Test
+    void 결제_서비스가_거절했어도_그사이_다른_요청이_확정했으면_확정_결과를_돌려준다() throws Exception {
+        int id = 라이브방송을_시작한다();
+        AuthClient viewer = 시청자();
+        String orderId = 주문을_만든다(viewer.credentials(), id, 5000, "응원");
+        payments.onConfirm(call -> {
+            jdbc.update("update donation set status = 'CONFIRMED', payment_key = ?, confirmed_at = current_timestamp"
+                    + " where order_id = ?", call.paymentKey(), orderId);
+            return new PaymentResult.Rejected("ALREADY_PROCESSED_PAYMENT_X", "거절");
+        });
+
+        승인한다(viewer.credentials(), "pk_1", orderId, 5000).andExpect(status().isOk());
+
+        assertThat(후원_행(orderId).get("STATUS")).isEqualTo("CONFIRMED");
+    }
+
+    @Test
     void 비로그인은_401이고_본문이_깨져도_먼저_401이다() throws Exception {
         승인한다(Csrf.token(), "pk_1", "order", 5000).andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/donations/confirm").with(Csrf.token())

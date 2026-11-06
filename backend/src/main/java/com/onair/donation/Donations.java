@@ -79,7 +79,7 @@ public class Donations implements BroadcastDeletionListener {
 
     /**
      * 결제를 승인하고 후원을 확정한다. 본인 주문(401, 404, 403)이고, 이미 같은 결제로 확정됐으면 그 결과를 그대로 돌려준다.
-     * 실패·취소는 409, 금액 불일치는 결제 서비스를 부르지 않고 실패로 기록해 400, 거절과 응답 불일치는 실패로 기록해 402다.
+     * 실패·취소는 409, 금액 불일치는 결제 서비스를 부르지 않고 실패로 기록해 400, 거절과 응답 불일치는 실패로 기록해 402다(그사이 다른 요청이 확정했으면 확정 결과).
      * 결제 서비스를 부르는 동안 트랜잭션을 잡지 않고, 확정은 "아직 확정되지 않았을 때만 바꾸는" 조건부 갱신으로 한 번만 성공한다.
      * 방송이 이미 끝났어도 확정한다.
      */
@@ -105,17 +105,14 @@ public class Donations implements BroadcastDeletionListener {
         }
         switch (result) {
             case PaymentResult.Rejected rejected -> {
-                fail(donation, rejected.code());
-                throw new PaymentRejectedException(rejected.code());
+                return failedOrConfirmed(donation, paymentKey, amount, rejected.code());
             }
             case PaymentResult.AlreadyProcessed processed -> {
-                fail(donation, TossPaymentGateway.ALREADY_PROCESSED);
-                throw new PaymentRejectedException(TossPaymentGateway.ALREADY_PROCESSED);
+                return failedOrConfirmed(donation, paymentKey, amount, TossPaymentGateway.ALREADY_PROCESSED);
             }
             case PaymentResult.Paid paid -> {
                 if (!matches(paid, donation, paymentKey)) {
-                    fail(donation, "PAYMENT_MISMATCH");
-                    throw new PaymentRejectedException("PAYMENT_MISMATCH");
+                    return failedOrConfirmed(donation, paymentKey, amount, "PAYMENT_MISMATCH");
                 }
             }
         }
@@ -206,6 +203,16 @@ public class Donations implements BroadcastDeletionListener {
             donations.failIfPending(donation.getId(), stored);
         }
         return donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new).getStatus();
+    }
+
+    // 실패로 기록하고 402를 낸다. 그사이 다른 요청이 같은 결제로 확정했으면 확정 결과를 돌려준다.
+    private DonationView failedOrConfirmed(Donation donation, String paymentKey, long amount, String code) {
+        fail(donation, code);
+        Donation current = donations.findByOrderId(donation.getOrderId()).orElseThrow(DonationNotFoundException::new);
+        if (current.getStatus() == DonationStatus.CONFIRMED && paymentKey.equals(current.getPaymentKey())) {
+            return decided(current, paymentKey, amount);
+        }
+        throw new PaymentRejectedException(code);
     }
 
     private void fail(Donation donation, String code) {
