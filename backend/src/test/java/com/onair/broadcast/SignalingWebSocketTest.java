@@ -6,10 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.onair.auth.Csrf;
 import com.jayway.jsonpath.JsonPath;
 import java.net.URI;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -39,6 +42,8 @@ class SignalingWebSocketTest {
 
     @LocalServerPort
     int port;
+
+    final List<WebSocketSession> opened = new CopyOnWriteArrayList<>();
 
     /** 서버가 보낸 메시지와 닫힘을 받아 두는 클라이언트 쪽 핸들러. */
     static class Inbox extends TextWebSocketHandler {
@@ -99,9 +104,22 @@ class SignalingWebSocketTest {
         if (cookie != null) {
             headers.add(HttpHeaders.COOKIE, cookie);
         }
-        return new StandardWebSocketClient()
+        WebSocketSession session = new StandardWebSocketClient()
                 .execute(inbox, headers, URI.create("ws://localhost:" + port + "/api/broadcasts/" + broadcastId + "/signal"))
                 .get(10, TimeUnit.SECONDS);
+        opened.add(session);
+        return session;
+    }
+
+    // 열린 채로 남은 연결은 컨텍스트가 닫힐 때 서버가 닫는데, 그때는 DB가 이미 닫혀 있어 오류 로그가 남는다.
+    @AfterEach
+    void 연결을_닫는다() throws Exception {
+        for (WebSocketSession session : opened) {
+            if (session.isOpen()) {
+                session.close();
+            }
+        }
+        opened.clear();
     }
 
     @Test

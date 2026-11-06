@@ -113,6 +113,24 @@ class AuthApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 로그인하거나_가입하면_CSRF_토큰이_새로_발급되고_새_토큰으로_요청할_수_있다() throws Exception {
+        AuthClient.signedUp(mockMvc, "streamer01", "방송러");
+        AuthClient client = AuthClient.visitor(mockMvc);
+        String beforeLogin = client.csrfToken();
+
+        client.login("streamer01", AuthClient.PASSWORD).andExpect(status().isOk());
+
+        assertThat(client.csrfToken()).isNotNull().isNotEqualTo(beforeLogin);
+        client.logout().andExpect(status().isNoContent());
+
+        AuthClient newcomer = AuthClient.visitor(mockMvc);
+        String beforeSignup = newcomer.csrfToken();
+        newcomer.signup("streamer02", AuthClient.PASSWORD, "새내기").andExpect(status().isCreated());
+        assertThat(newcomer.csrfToken()).isNotNull().isNotEqualTo(beforeSignup);
+        newcomer.logout().andExpect(status().isNoContent());
+    }
+
+    @Test
     void 틀린_비밀번호와_없는_아이디는_같은_401이다() throws Exception {
         AuthClient.signedUp(mockMvc, "streamer01", "방송러");
 

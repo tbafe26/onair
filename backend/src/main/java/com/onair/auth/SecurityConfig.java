@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,6 +28,7 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.json.JsonMapper;
@@ -66,10 +68,16 @@ class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityContextRepository contexts) throws Exception {
+    CsrfTokenRepository csrfTokenRepository() {
         // 토큰 쿠키는 화면의 스크립트가 읽어 헤더에 실어야 하므로 HttpOnly가 아니다.
         CookieCsrfTokenRepository csrfTokens = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfTokens.setCookieCustomizer(cookie -> cookie.sameSite("Lax"));
+        return csrfTokens;
+    }
+
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http, SecurityContextRepository contexts, CsrfTokenRepository csrfTokens) throws Exception {
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokens)
@@ -78,6 +86,8 @@ class SecurityConfig {
                 .securityContext(context -> context.securityContextRepository(contexts))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/api/auth/me").authenticated()
+                        // 본문을 읽기 전에 거른다. 그래야 비로그인 요청이 본문 오류(400)보다 먼저 401을 받는다.
+                        .requestMatchers(HttpMethod.PATCH, "/api/broadcasts/*").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, e) -> writeProblem(

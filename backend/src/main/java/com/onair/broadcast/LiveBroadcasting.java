@@ -280,7 +280,7 @@ public class LiveBroadcasting {
 
     private JoinResult check(long broadcastId, String streamKey, Long userId, Peer peer) {
         return checkOnAir(broadcastId, live -> {
-            if (userId == null || !userId.equals(live.getOwner().getId())) {
+            if (userId == null || !live.isOwnedBy(userId)) {
                 return JoinResult.Rejection.NOT_OWNER;
             }
             if (!live.matchesStreamKey(streamKey)) {
@@ -295,7 +295,7 @@ public class LiveBroadcasting {
 
     private void finish(long broadcastId) {
         transaction.executeWithoutResult(status ->
-                repository.findLiveById(broadcastId).ifPresent(live -> live.end(clock.instant())));
+                repository.findLiveByIdForUpdate(broadcastId).ifPresent(live -> live.end(clock.instant())));
         for (Peer viewer : rooms.closeRoom(broadcastId)) {
             viewer.send(SignalMessage.of(SignalMessage.ENDED));
             viewer.close();
