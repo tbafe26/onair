@@ -41,12 +41,13 @@ class BroadcastController {
                 .body(BroadcastResponses.detail(created));
     }
 
-    /** 커서 방식 목록. before가 없으면 최신부터, size는 기본 20이고 50을 넘으면 50으로 줄이며 1 미만이면 400이다. */
+    /** 커서 방식 목록. before가 없으면 최신부터, size는 기본 20이고 50을 넘으면 50으로 줄이며 1 미만이면 400이다. kind(LIVE, RECORDING)가 없으면 종류와 상관없이 전부이고, 알 수 없는 값은 400이다. */
     @GetMapping
     BroadcastPage list(
             @RequestParam(required = false) Long before,
-            @RequestParam(required = false) Integer size) {
-        return service.list(before, size);
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String kind) {
+        return service.list(before, size, kind);
     }
 
     /** 업로드 크기 상한. 리터럴 경로라서 아래 /{id} 매핑보다 먼저 선택된다. */

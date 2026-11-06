@@ -14,6 +14,10 @@ interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
     @Query("select b from Broadcast b where b.id < :before order by b.id desc")
     List<Broadcast> findBefore(@Param("before") long before, Pageable pageable);
 
+    /** findBefore와 같되 녹화방송만 돌려준다. */
+    @Query("select r from RecordingBroadcast r where r.id < :before order by r.id desc")
+    List<Broadcast> findRecordingsBefore(@Param("before") long before, Pageable pageable);
+
     /** 영상 파일을 여는 요청용. 녹화방송이 아닌 id는 비어 있다. */
     @Query("select r from RecordingBroadcast r join fetch r.video where r.id = :id")
     Optional<RecordingBroadcast> findRecordingWithVideoById(@Param("id") long id);
