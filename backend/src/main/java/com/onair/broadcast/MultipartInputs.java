@@ -19,4 +19,13 @@ final class MultipartInputs {
             throw new UncheckedIOException(e);
         }
     }
+
+    /** 업로드 파일을 묶음에 저장하고 서버가 만든 키를 돌려준다. */
+    static String store(MediaStorage.Batch batch, MultipartFile file) {
+        try (InputStream in = open(file)) {
+            return batch.store(in);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 }

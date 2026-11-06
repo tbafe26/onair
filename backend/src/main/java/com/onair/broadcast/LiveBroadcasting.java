@@ -1,30 +1,27 @@
 package com.onair.broadcast;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 라이브방송의 수명 주기를 맡는 깊은 모듈: 시작, 송출자·시청자 연결, 시그널링 중계, 종료.
  * 라이브방송의 상태를 바꾸는 코드는 여기에만 있다. REST와 WebSocket은 이 모듈을 부르는 얇은 adapter다.
  *
- * <p>연결 표는 서버 메모리에 둔다(서버 한 대 전제). 표와 DB 변경은 같은 잠금 안에서 하고,
+ * <p>방 표({@link LiveRooms})는 서버 메모리에 둔다(서버 한 대 전제). 표와 DB 변경은 같은 잠금 안에서 하고,
  * DB 반영이 끝난 뒤에 잠금을 놓아 다른 연결이 종료 전 상태를 읽지 못하게 한다.
+ * 방 표는 스레드 안전하지 않으며 이 클래스의 잠금 안에서만 쓴다.
  */
 @Service
 public class LiveBroadcasting {
@@ -34,19 +31,7 @@ public class LiveBroadcasting {
     private final RegistrationRules rules;
     private final TransactionTemplate transaction;
     private final Clock clock;
-    private final int maxViewers;
-
-    // 방송 id → 송출자 연결, 연결 → 방송 id. this 잠금으로 보호한다.
-    private final Map<Long, Peer> broadcasters = new HashMap<>();
-    private final Map<Peer, Long> broadcastIds = new IdentityHashMap<>();
-    // 방송 id -> 송출자의 마지막 생존 신호 시각. 연결된 송출자만 있다. 연결 전 방송은 시작 시각(DB)을 쓴다.
-    private final Map<Long, Instant> lastSignals = new HashMap<>();
-    // 방송 id -> (시청자 번호 -> 시청자 연결), 연결 -> 자리. 시청자 번호는 서버가 부여한다.
-    private final Map<Long, Map<String, Peer>> viewers = new HashMap<>();
-    private final Map<Peer, ViewerSeat> seats = new IdentityHashMap<>();
-    private long lastViewerNumber;
-
-    private record ViewerSeat(long broadcastId, String viewerId) { }
+    private final LiveRooms rooms;
 
     /** 마지막 생존 신호에서 이 시간이 지나도록 연락이 없으면 송출자가 사라진 것으로 본다. */
     static final Duration SILENCE_LIMIT = Duration.ofSeconds(30);
@@ -62,7 +47,7 @@ public class LiveBroadcasting {
             Clock clock,
             @Value("${app.live.max-viewers:5}") int maxViewers) {
         this.clock = clock;
-        this.maxViewers = maxViewers;
+        this.rooms = new LiveRooms(maxViewers);
         this.repository = repository;
         this.storage = storage;
         this.rules = rules;
@@ -75,7 +60,8 @@ public class LiveBroadcasting {
         String streamKey = StreamKeys.generate();
 
         try (MediaStorage.Batch batch = storage.begin()) {
-            String thumbnailKey = valid.thumbnail() == null ? null : store(batch, valid.thumbnail());
+            String thumbnailKey = valid.thumbnail() == null
+                    ? null : MultipartInputs.store(batch, valid.thumbnail());
             LiveBroadcast saved = repository.save(new LiveBroadcast(
                     valid.title(), StreamKeys.hash(streamKey), thumbnailKey, clock.instant()));
             batch.commit();
@@ -92,9 +78,7 @@ public class LiveBroadcasting {
         if (result == null || !result.isAccepted()) {
             return reject(peer, result);
         }
-        broadcasters.put(broadcastId, peer);
-        broadcastIds.put(peer, broadcastId);
-        lastSignals.put(broadcastId, clock.instant());
+        rooms.registerBroadcaster(broadcastId, peer, clock.instant());
         peer.send(SignalMessage.of(SignalMessage.JOINED, "broadcastId", broadcastId));
         return result;
     }
@@ -108,11 +92,10 @@ public class LiveBroadcasting {
         if (result == null || !result.isAccepted()) {
             return reject(peer, result);
         }
-        String viewerId = String.valueOf(++lastViewerNumber);
-        viewers.computeIfAbsent(broadcastId, id -> new LinkedHashMap<>()).put(viewerId, peer);
-        seats.put(peer, new ViewerSeat(broadcastId, viewerId));
+        String viewerId = rooms.assignSeat(broadcastId, peer).orElseThrow();
         peer.send(SignalMessage.of(SignalMessage.JOINED, "viewerId", viewerId));
-        broadcasters.get(broadcastId).send(SignalMessage.of(SignalMessage.VIEWER_JOINED, "viewerId", viewerId));
+        rooms.broadcasterOf(broadcastId)
+                .ifPresent(b -> b.send(SignalMessage.of(SignalMessage.VIEWER_JOINED, "viewerId", viewerId)));
         sendViewerCount(broadcastId);
         return result;
     }
@@ -124,48 +107,36 @@ public class LiveBroadcasting {
      * 어느 쪽도 아닌 연결의 메시지는 무시한다.
      */
     public synchronized void relay(Peer from, SignalMessage message) {
-        Long broadcastId = broadcastIds.get(from);
-        if (broadcastId != null) {
-            relayFromBroadcaster(broadcastId, from, message);
+        Optional<Long> broadcastId = rooms.broadcastIdOf(from);
+        if (broadcastId.isPresent()) {
+            relayFromBroadcaster(broadcastId.get(), from, message);
             return;
         }
-        ViewerSeat seat = seats.get(from);
-        if (seat != null && RELAYED_TYPES.contains(message.type())) {
-            Peer broadcaster = broadcasters.get(seat.broadcastId());
-            if (broadcaster != null) {
-                broadcaster.send(forward(message, seat.viewerId()));
+        rooms.seatOf(from).ifPresent(seat -> {
+            if (RELAYED_TYPES.contains(message.type())) {
+                rooms.broadcasterOf(seat.broadcastId())
+                        .ifPresent(b -> b.send(forward(message, seat.viewerId())));
             }
-        }
+        });
     }
 
     /** 연결이 끊겼다. 송출자였다면 방송을 종료로 저장하고, 시청자였다면 자리를 비우고 송출자에게 알린다. */
     public synchronized void leave(Peer peer) {
-        Long broadcastId = broadcastIds.get(peer);
-        if (broadcastId != null) {
-            finish(broadcastId);
+        Optional<Long> broadcastId = rooms.broadcastIdOf(peer);
+        if (broadcastId.isPresent()) {
+            finish(broadcastId.get());
             return;
         }
-        ViewerSeat seat = seats.remove(peer);
-        if (seat == null) {
-            return;
-        }
-        Map<String, Peer> room = viewers.get(seat.broadcastId());
-        if (room != null) {
-            room.remove(seat.viewerId());
-            if (room.isEmpty()) {
-                viewers.remove(seat.broadcastId());
-            }
-        }
-        Peer broadcaster = broadcasters.get(seat.broadcastId());
-        if (broadcaster != null) {
-            broadcaster.send(SignalMessage.of(SignalMessage.VIEWER_LEFT, "viewerId", seat.viewerId()));
-            sendViewerCount(seat.broadcastId());
-        }
+        rooms.releaseSeat(peer).ifPresent(seat ->
+                rooms.broadcasterOf(seat.broadcastId()).ifPresent(b -> {
+                    b.send(SignalMessage.of(SignalMessage.VIEWER_LEFT, "viewerId", seat.viewerId()));
+                    sendViewerCount(seat.broadcastId());
+                }));
     }
 
     /**
      * 마지막 생존 신호에서 30초가 지난 방송을 종료한다. 송출자가 연결된 방송은 마지막 heartbeat 시각을,
-     * 연결되지 않은 방송은 시작 시각을 첫 생존 신호로 본다. 서버가 다시 시작돼 연결 표가 비어도
+     * 연결되지 않은 방송은 시작 시각을 첫 생존 신호로 본다. 서버가 다시 시작돼 방 표가 비어도
      * 방송 중으로 남은 방송은 DB에서 찾으므로 같은 규칙으로 정리된다.
      * 종료되는 방송의 송출자와 시청자에게는 ended를 보내고 연결을 닫는다.
      */
@@ -176,18 +147,18 @@ public class LiveBroadcasting {
         }
         List<Long> silent = new ArrayList<>();
         for (LiveBroadcast live : onAir) {
-            Instant lastSignal = lastSignals.getOrDefault(live.getId(), live.getCreatedAt());
+            Instant lastSignal = rooms.lastSignalOf(live.getId()).orElse(live.getCreatedAt());
             if (now.isAfter(lastSignal.plus(SILENCE_LIMIT))) {
                 silent.add(live.getId());
             }
         }
         for (long broadcastId : silent) {
-            Peer broadcaster = broadcasters.get(broadcastId);
+            Optional<Peer> broadcaster = rooms.broadcasterOf(broadcastId);
             finish(broadcastId);
-            if (broadcaster != null) {
-                broadcaster.send(SignalMessage.of(SignalMessage.ENDED));
-                broadcaster.close();
-            }
+            broadcaster.ifPresent(b -> {
+                b.send(SignalMessage.of(SignalMessage.ENDED));
+                b.close();
+            });
         }
     }
 
@@ -203,18 +174,14 @@ public class LiveBroadcasting {
 
     private void relayFromBroadcaster(long broadcastId, Peer from, SignalMessage message) {
         if (SignalMessage.HEARTBEAT.equals(message.type())) {
-            lastSignals.put(broadcastId, clock.instant());
+            rooms.recordHeartbeat(broadcastId, clock.instant());
         } else if (SignalMessage.END.equals(message.type())) {
             finish(broadcastId);
             from.send(SignalMessage.of(SignalMessage.ENDED));
             from.close();
         } else if (RELAYED_TYPES.contains(message.type())) {
-            String to = message.text("to");
-            Map<String, Peer> room = viewers.get(broadcastId);
-            Peer viewer = to == null || room == null ? null : room.get(to);
-            if (viewer != null) {
-                viewer.send(forward(message, null));
-            }
+            rooms.viewerOf(broadcastId, message.text("to"))
+                    .ifPresent(viewer -> viewer.send(forward(message, null)));
         }
     }
 
@@ -230,12 +197,8 @@ public class LiveBroadcasting {
     }
 
     private void sendViewerCount(long broadcastId) {
-        Map<String, Peer> room = viewers.get(broadcastId);
-        int count = room == null ? 0 : room.size();
-        Peer broadcaster = broadcasters.get(broadcastId);
-        if (broadcaster != null) {
-            broadcaster.send(SignalMessage.of(SignalMessage.VIEWER_COUNT, "count", count, "max", maxViewers));
-        }
+        rooms.broadcasterOf(broadcastId).ifPresent(b -> b.send(SignalMessage.of(
+                SignalMessage.VIEWER_COUNT, "count", rooms.viewerCount(broadcastId), "max", rooms.capacity())));
     }
 
     private JoinResult reject(Peer peer, JoinResult result) {
@@ -245,7 +208,8 @@ public class LiveBroadcasting {
         return JoinResult.rejected(rejection);
     }
 
-    private JoinResult checkViewer(long broadcastId, Peer peer) {
+    /** 방송이 있고 방송 중이어야 한다는 공통 조건을 먼저 검사하고, 통과하면 나머지 조건을 검사한다. */
+    private JoinResult checkOnAir(long broadcastId, Function<LiveBroadcast, JoinResult.Rejection> rest) {
         LiveBroadcast live = repository.findLiveById(broadcastId).orElse(null);
         if (live == null) {
             return JoinResult.rejected(JoinResult.Rejection.NOT_FOUND);
@@ -253,59 +217,40 @@ public class LiveBroadcasting {
         if (!live.isOnAir()) {
             return JoinResult.rejected(JoinResult.Rejection.ENDED);
         }
-        if (!broadcasters.containsKey(broadcastId)) {
-            return JoinResult.rejected(JoinResult.Rejection.NOT_BROADCASTING);
-        }
-        if (seats.containsKey(peer) || broadcastIds.containsKey(peer)) {
-            return JoinResult.rejected(JoinResult.Rejection.ALREADY_JOINED);
-        }
-        Map<String, Peer> room = viewers.get(broadcastId);
-        if (room != null && room.size() >= maxViewers) {
-            return JoinResult.rejected(JoinResult.Rejection.FULL);
-        }
-        return JoinResult.accepted();
+        JoinResult.Rejection rejection = rest.apply(live);
+        return rejection == null ? JoinResult.accepted() : JoinResult.rejected(rejection);
+    }
+
+    private JoinResult checkViewer(long broadcastId, Peer peer) {
+        return checkOnAir(broadcastId, live -> {
+            if (!rooms.hasBroadcaster(broadcastId)) {
+                return JoinResult.Rejection.NOT_BROADCASTING;
+            }
+            if (rooms.isConnected(peer)) {
+                return JoinResult.Rejection.ALREADY_JOINED;
+            }
+            return rooms.isFull(broadcastId) ? JoinResult.Rejection.FULL : null;
+        });
     }
 
     private JoinResult check(long broadcastId, String streamKey, Peer peer) {
-        LiveBroadcast live = repository.findLiveById(broadcastId).orElse(null);
-        if (live == null) {
-            return JoinResult.rejected(JoinResult.Rejection.NOT_FOUND);
-        }
-        if (!live.isOnAir()) {
-            return JoinResult.rejected(JoinResult.Rejection.ENDED);
-        }
-        if (!live.matchesStreamKey(streamKey)) {
-            return JoinResult.rejected(JoinResult.Rejection.INVALID_KEY);
-        }
-        if (broadcasters.containsKey(broadcastId) || broadcastIds.containsKey(peer) || seats.containsKey(peer)) {
-            return JoinResult.rejected(JoinResult.Rejection.ALREADY_BROADCASTING);
-        }
-        return JoinResult.accepted();
+        return checkOnAir(broadcastId, live -> {
+            if (!live.matchesStreamKey(streamKey)) {
+                return JoinResult.Rejection.INVALID_KEY;
+            }
+            if (rooms.hasBroadcaster(broadcastId) || rooms.isConnected(peer)) {
+                return JoinResult.Rejection.ALREADY_BROADCASTING;
+            }
+            return null;
+        });
     }
 
     private void finish(long broadcastId) {
         transaction.executeWithoutResult(status ->
                 repository.findLiveById(broadcastId).ifPresent(live -> live.end(clock.instant())));
-        lastSignals.remove(broadcastId);
-        Peer peer = broadcasters.remove(broadcastId);
-        if (peer != null) {
-            broadcastIds.remove(peer);
-        }
-        Map<String, Peer> room = viewers.remove(broadcastId);
-        if (room != null) {
-            for (Peer viewer : room.values()) {
-                seats.remove(viewer);
-                viewer.send(SignalMessage.of(SignalMessage.ENDED));
-                viewer.close();
-            }
-        }
-    }
-
-    private static String store(MediaStorage.Batch batch, MultipartFile file) {
-        try (InputStream in = MultipartInputs.open(file)) {
-            return batch.store(in);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        for (Peer viewer : rooms.closeRoom(broadcastId)) {
+            viewer.send(SignalMessage.of(SignalMessage.ENDED));
+            viewer.close();
         }
     }
 }
