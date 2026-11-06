@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import java.time.Instant;
+import java.util.List;
 
 /** 녹화방송: 영상 하나를 참조하는 방송. 영상 정보는 호출자가 구조를 따라가지 않도록 여기서 바로 묻는다. */
 @Entity
@@ -55,5 +56,40 @@ public class RecordingBroadcast extends Broadcast {
     @Override
     String thumbnailKey() {
         return video.getThumbnailKey();
+    }
+
+    @Override
+    boolean isOnAir() {
+        return false;
+    }
+
+    @Override
+    boolean canDeleteNow() {
+        return true;
+    }
+
+    @Override
+    boolean acceptsCommentsNow() {
+        return true;
+    }
+
+    @Override
+    boolean commentsDeletable() {
+        return true;
+    }
+
+    @Override
+    boolean isChat() {
+        return false;
+    }
+
+    @Override
+    boolean canEndStream() {
+        return false;
+    }
+
+    @Override
+    List<String> ownedFileKeys() {
+        return thumbnailKey() == null ? List.of(videoStorageKey()) : List.of(videoStorageKey(), thumbnailKey());
     }
 }

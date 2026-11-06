@@ -55,13 +55,12 @@ class Comments {
         Broadcast broadcast = broadcasts.findByIdForUpdate(broadcastId)
                 .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
         // 라이브방송의 댓글이 채팅이다. 방송 중일 때만 쓸 수 있다.
-        LiveBroadcast live = broadcast instanceof LiveBroadcast found ? found : null;
-        if (live != null && !live.isOnAir()) {
+        if (!broadcast.acceptsCommentsNow()) {
             throw new ChatClosedException(broadcastId);
         }
         String content = validate(rawContent);
         CommentView view = CommentView.of(comments.save(new Comment(broadcast, author, content, Instant.now(clock))));
-        if (live != null) {
+        if (broadcast.isChat()) {
             // 커밋 뒤에 보내야 구독자가 받은 채팅을 곧바로 REST로 읽을 수 있다.
             afterCommit(() -> publish(broadcastId, view));
         }
@@ -77,11 +76,11 @@ class Comments {
             set.add(subscriber);
             return set;
         });
-        LiveBroadcast live = broadcasts.findById(broadcastId).orElse(null) instanceof LiveBroadcast found ? found : null;
-        if (live == null) {
+        Broadcast broadcast = broadcasts.findById(broadcastId).orElse(null);
+        if (broadcast == null || !broadcast.isChat()) {
             release(broadcastId, subscriber);
             subscriber.close();
-        } else if (!live.isOnAir() && release(broadcastId, subscriber)) {
+        } else if (!broadcast.acceptsCommentsNow() && release(broadcastId, subscriber)) {
             subscriber.send(ChatMessage.ended());
             subscriber.close();
         }
@@ -141,7 +140,7 @@ class Comments {
         Comment comment = comments.findById(commentId)
                 .filter(found -> found.broadcastId() == broadcastId)
                 .orElseThrow(() -> new CommentNotFoundException(commentId));
-        if (broadcast instanceof LiveBroadcast) {
+        if (!broadcast.commentsDeletable()) {
             throw new ChatNotDeletableException(commentId);
         }
         if (!comment.isWrittenBy(requester)) {

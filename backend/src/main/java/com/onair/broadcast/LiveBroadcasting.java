@@ -176,17 +176,12 @@ public class LiveBroadcasting {
      * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
      */
     public synchronized void endByOwner(long broadcastId, Long userId) {
-        long requester = Requester.id(userId);
         Boolean onAir = transaction.execute(status -> {
-            Broadcast broadcast = repository.findById(broadcastId)
-                    .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
-            if (!broadcast.isOwnedBy(requester)) {
-                throw new BroadcastForbiddenException(broadcastId);
-            }
-            if (!(broadcast instanceof LiveBroadcast live)) {
+            Broadcast broadcast = OwnedBroadcasts.find(repository, broadcastId, userId);
+            if (!broadcast.canEndStream()) {
                 throw new NotLiveBroadcastException(broadcastId);
             }
-            return live.isOnAir();
+            return broadcast.isOnAir();
         });
         if (Boolean.TRUE.equals(onAir)) {
             finishAndNotifyBroadcaster(broadcastId);
