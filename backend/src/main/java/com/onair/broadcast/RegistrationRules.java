@@ -11,7 +11,7 @@ import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 녹화방송 등록 규칙의 유일한 소유자: 영상·썸네일 크기 상한, 제목 길이, 멀티파트 요청 상한, 입력 검증.
+ * 녹화방송 등록과 라이브방송 시작 규칙의 유일한 소유자: 영상·썸네일 크기 상한, 제목 길이, 멀티파트 요청 상한, 입력 검증.
  * 상한이 필요한 다른 곳(업로드 정책, 멀티파트 설정, 413 응답)은 여기서 값을 가져간다.
  */
 @Component
