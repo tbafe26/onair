@@ -1,10 +1,10 @@
-import { decodeFailure, startLiveBroadcast } from '../api/broadcasts'
+import { startLiveBroadcast } from '../api/broadcasts'
 import { fetchComments, postComment } from '../api/comments'
 import { parseChatMessage } from './chat-protocol'
 import type { ChatDeps } from './chat'
-import { StartRejectedError, type BroadcasterDeps } from './broadcaster'
+import type { BroadcasterDeps } from './broadcaster'
 import { createBrowserPeerConnection } from './peer'
-import { asSignalMessage, START_FAILURE_MESSAGE, type SignalingChannel, type SignalingHandlers } from './signaling-protocol'
+import { asSignalMessage, type SignalingChannel, type SignalingHandlers } from './signaling-protocol'
 import type { ViewerDeps } from './viewer'
 
 function signalingUrl(broadcastId: number): string {
@@ -42,18 +42,6 @@ function openSignaling(broadcastId: number, handlers: SignalingHandlers): Promis
   })
 }
 
-async function startLive(input: { title: string; thumbnail: Blob | null }) {
-  try {
-    return await startLiveBroadcast(input)
-  } catch (error) {
-    const failure = decodeFailure(error)
-    if (failure.kind === 'invalid') {
-      throw new StartRejectedError(Object.values(failure.fieldErrors)[0], failure.fieldErrors)
-    }
-    throw new Error(START_FAILURE_MESSAGE, { cause: error })
-  }
-}
-
 /** 실제 브라우저 API를 송출 모듈에 연결한다. 서버 주소와 송출 키는 로그에 남기지 않는다. */
 export const browserBroadcasterDeps: BroadcasterDeps = {
   getUserMedia:
@@ -63,7 +51,7 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
   enumerateDevices: navigator.mediaDevices?.enumerateDevices
     ? () => navigator.mediaDevices.enumerateDevices()
     : undefined,
-  startLive,
+  startLive: startLiveBroadcast,
   openSignaling,
   createPeerConnection: createBrowserPeerConnection,
   now: () => Date.now(),

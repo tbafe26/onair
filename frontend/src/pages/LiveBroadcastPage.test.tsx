@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
-import type { BroadcasterState, CameraUnavailableReason } from '../live/broadcaster'
+import type { BroadcasterState, CameraUnavailableReason, StartFailure } from '../live/broadcaster'
 import { fakeStream } from '../test/fakeLive'
 import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
@@ -54,13 +54,8 @@ function setState(app: App, state: BroadcasterState) {
   act(() => app.fake.broadcaster.setState(state))
 }
 
-function preview(app: App, overrides: { startFailure?: string; startFieldErrors?: Record<string, string> } = {}) {
-  setState(app, {
-    phase: 'previewing',
-    stream: fakeStream(),
-    startFailure: overrides.startFailure ?? null,
-    startFieldErrors: overrides.startFieldErrors ?? {},
-  })
+function preview(app: App, startFailure: StartFailure | null = null) {
+  setState(app, { phase: 'previewing', stream: fakeStream(), startFailure })
 }
 
 function goOnAir(app: App, extra: { viewerCount?: number; maxViewers?: number | null; startedAt?: number } = {}) {
@@ -167,7 +162,8 @@ it('서버가 돌려준 필드 오류를 입력란 옆에 보여 주고, 제목�
   await user.type(screen.getByLabelText('제목'), '내 라이브')
 
   preview(app, {
-    startFieldErrors: { title: '서버가 말하는 제목 오류', thumbnail: '서버가 말하는 썸네일 오류' },
+    kind: 'invalid',
+    fieldErrors: { title: '서버가 말하는 제목 오류', thumbnail: '서버가 말하는 썸네일 오류' },
   })
 
   await waitFor(() =>
@@ -178,6 +174,28 @@ it('서버가 돌려준 필드 오류를 입력란 옆에 보여 주고, 제목�
 
   await user.type(screen.getByLabelText('제목'), '!')
   expect(screen.getByLabelText('제목')).not.toHaveAccessibleDescription()
+})
+
+it('썸네일이 너무 커서 거절되면 일반 실패 문구 대신 썸네일 칸의 이유를 보여 주고, 썸네일을 고르면 지운다', async () => {
+  const user = userEvent.setup()
+  const app = await openPreview()
+  await user.type(screen.getByLabelText('제목'), '내 라이브')
+
+  preview(app, { kind: 'tooLarge', maxBytes: 2_097_152, message: '썸네일은 2MB 이하만 올릴 수 있습니다' })
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('썸네일은 2MB 이하만 올릴 수 있습니다')
+  expect(screen.queryByText(/송출을 시작하지 못했습니다/)).not.toBeInTheDocument()
+
+  await user.upload(screen.getByLabelText(/썸네일/), new File(['x'], 'a.png', { type: 'image/png' }))
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+})
+
+it('시그널링 단계의 실패는 모듈이 준 문구를 그대로 보여 준다', async () => {
+  const app = await openPreview()
+
+  preview(app, { kind: 'message', message: '이미 다른 곳에서 송출 중인 방송입니다.' })
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('이미 다른 곳에서 송출 중인 방송입니다.')
 })
 
 it('송출 시작을 누르면 제목을 모듈에 넘기고, 시작하는 동안에는 버튼을 다시 누를 수 없다', async () => {
@@ -203,7 +221,7 @@ it('송출 시작에 실패하면 미리보기로 돌아가 이유를 보여 주
   await user.click(screen.getByRole('button', { name: '송출 시작' }))
   setState(app, { phase: 'starting', stream: fakeStream() })
 
-  preview(app, { startFailure: '송출을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.' })
+  preview(app, { kind: 'unknown' })
 
   expect(await screen.findByRole('alert')).toHaveTextContent('송출을 시작하지 못했습니다')
   expect(screen.getByLabelText('제목')).toHaveValue('내 라이브')
