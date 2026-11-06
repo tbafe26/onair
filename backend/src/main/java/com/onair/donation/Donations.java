@@ -9,6 +9,7 @@ import com.onair.broadcast.Broadcast;
 import com.onair.broadcast.BroadcastDeletionListener;
 import com.onair.broadcast.BroadcastNotFoundException;
 import com.onair.broadcast.BroadcastRepository;
+import com.onair.live.LiveChat;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -37,9 +38,11 @@ public class Donations implements BroadcastDeletionListener {
     private final TossSettings toss;
     private final PaymentGateway payments;
     private final Clock clock;
+    private final LiveChat chat;
 
     Donations(DonationRepository donations, BroadcastRepository broadcasts, AppUserRepository users,
-            TossSettings toss, PaymentGateway payments, Clock clock) {
+            TossSettings toss, PaymentGateway payments, Clock clock, LiveChat chat) {
+        this.chat = chat;
         this.donations = donations;
         this.broadcasts = broadcasts;
         this.users = users;
@@ -113,14 +116,30 @@ public class Donations implements BroadcastDeletionListener {
                 }
             }
         }
+        boolean won;
         try {
-            donations.confirmIfPending(donation.getId(), paymentKey, Instant.now(clock));
+            won = donations.confirmIfPending(donation.getId(), paymentKey, Instant.now(clock)) == 1;
         } catch (DataIntegrityViolationException e) {
             // 같은 결제 키가 다른 후원에 이미 쓰였다.
             throw new DonationNotPayableException();
         }
         // 이긴 쪽과 진 쪽 모두 저장된 확정 결과를 읽어 돌려준다.
-        return decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new), paymentKey);
+        DonationView view = decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new),
+                paymentKey);
+        if (won) {
+            publishConfirmed(donation.getBroadcast().getId(), view);
+        }
+        return view;
+    }
+
+    // 조건부 갱신이 이미 커밋된 뒤라서 구독자가 받은 합계를 곧바로 REST로 읽어도 같다. 끝난 방송에는 보내지 않는다.
+    private void publishConfirmed(long broadcastId, DonationView view) {
+        if (broadcasts.findById(broadcastId).filter(Broadcast::isOnAir).isEmpty()) {
+            return;
+        }
+        DonationPage.Total total = new DonationPage.Total(donations.confirmedAmountOf(broadcastId),
+                donations.confirmedCountOf(broadcastId));
+        chat.publishDonation(broadcastId, DonationChatEvent.of(view, total));
     }
 
     // 결제 서비스가 돌려준 결제가 저장된 후원과 맞는지 본다: 상태 DONE, 주문 번호, 금액, 결제 키.

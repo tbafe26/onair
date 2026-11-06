@@ -89,6 +89,10 @@ public class Donation {
         return paymentKey;
     }
 
+    Broadcast getBroadcast() {
+        return broadcast;
+    }
+
     AppUser getDonor() {
         return donor;
     }

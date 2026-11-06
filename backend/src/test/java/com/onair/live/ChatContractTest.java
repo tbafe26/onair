@@ -15,9 +15,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /** 채팅 WebSocket 메시지가 공유 계약 파일(contracts/chat.json)과 같은지 확인한다. 서버가 실제로 보낸 메시지를 대조한다. */
-class ChatContractTest extends ApiTestSupport {
+public class ChatContractTest extends ApiTestSupport {
 
-    static final Path CONTRACT = Path.of("..", "contracts", "chat.json");
+    public static final Path CONTRACT = Path.of("..", "contracts", "chat.json");
 
     final JsonMapper json = JsonMapper.builder().build();
     final JsonNode contract = json.readTree(CONTRACT.toFile());
@@ -46,12 +46,15 @@ class ChatContractTest extends ApiTestSupport {
         live.endByOwner(id, owner().userId());
 
         JsonNode messages = contract.get("messages");
-        assertThat(subscriber.types()).containsExactlyInAnyOrderElementsOf(messages.propertyNames());
+        // donation은 결제 승인이 있어야 나가므로 DonationChatApiTest가 대조한다.
+        assertThat(subscriber.types()).containsExactlyInAnyOrderElementsOf(
+                messages.propertyNames().stream().filter(name -> !name.equals(ChatMessage.DONATION)).toList());
         for (ChatMessage message : subscriber.received) {
             assertThat(message.fields().keySet()).as(message.type() + "의 필드")
                     .containsExactlyInAnyOrderElementsOf(이름들(messages.get(message.type()).get("server->client")));
         }
         assertThat(ChatMessage.COMMENT).isEqualTo("comment");
+        assertThat(ChatMessage.DONATION).isEqualTo("donation");
         assertThat(subscriber.received.getLast().type()).isEqualTo(ChatMessage.ENDED);
     }
 
