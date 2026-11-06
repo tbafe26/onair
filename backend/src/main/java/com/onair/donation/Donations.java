@@ -92,11 +92,7 @@ public class Donations implements BroadcastDeletionListener {
      * 방송이 이미 끝났어도 확정한다.
      */
     public DonationView confirm(Long userId, String paymentKey, String orderId, long amount) {
-        long donorId = Requester.id(userId);
-        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
-        if (donation.getDonor().getId() != donorId) {
-            throw new NotDonorException();
-        }
+        Donation donation = ownedDonation(Requester.id(userId), orderId);
         if (donation.getStatus() == DonationStatus.CONFIRMED) {
             return decided(donation, paymentKey, amount);
         }
@@ -145,6 +141,15 @@ public class Donations implements BroadcastDeletionListener {
         } catch (PaymentGatewayUnavailableException | DonationNotPayableException e) {
             // 결제 서비스가 다시 통지하거나 사용자가 승인하면 된다.
         }
+    }
+
+    // 주문 번호로 후원을 찾고 후원자 본인인지 확인한다. 없으면 404, 다른 사람의 주문이면 403이다.
+    private Donation ownedDonation(long donorId, String orderId) {
+        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
+        if (donation.getDonor().getId() != donorId) {
+            throw new NotDonorException();
+        }
+        return donation;
     }
 
     // 후원을 확정한다. 결제가 확인된 뒤라 대기가 아니어도 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
@@ -204,11 +209,7 @@ public class Donations implements BroadcastDeletionListener {
      * 사용자가 결제창을 닫으면 취소, 그 밖의 코드는 실패다. 이미 정해진 주문은 그대로 두고 현재 상태를 돌려준다.
      */
     public DonationStatus recordFailure(Long userId, String orderId, String code) {
-        long donorId = Requester.id(userId);
-        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
-        if (donation.getDonor().getId() != donorId) {
-            throw new NotDonorException();
-        }
+        Donation donation = ownedDonation(Requester.id(userId), orderId);
         String stored = code.length() > MAX_FAILURE_CODE_LENGTH ? code.substring(0, MAX_FAILURE_CODE_LENGTH) : code;
         if (USER_CANCELED.equals(code)) {
             donations.cancelIfPending(donation.getId(), stored);
