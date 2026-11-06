@@ -17,17 +17,22 @@ function injectThemeKey(): Plugin {
 export default defineConfig(({ command, mode }) => {
   // frontend/.env 값과 셸 환경변수를 함께 읽는다(셸 값이 우선).
   const env = loadEnv(mode, process.cwd(), '')
+  // localHttp(pnpm dev:local)는 이 PC의 브라우저 전용 HTTP 개발 서버다. localhost는 HTTP에서도 카메라를 쓸 수 있어
+  // 자체 서명 인증서를 받아들이지 않는 브라우저(에이전트의 내장 브라우저 등)로도 화면을 확인할 수 있다.
+  const localHttp = mode === 'http'
   // 자체 서명 인증서는 개발 서버를 띄울 때만 실행 중에 만든다. build와 vitest(mode가 test)에는 넣지 않는다.
-  const useDevHttps = command === 'serve' && mode !== 'test'
+  const useDevHttps = command === 'serve' && mode !== 'test' && !localHttp
   return {
     plugins: [react(), tailwindcss(), injectThemeKey(), ...(useDevHttps ? [basicSsl()] : [])],
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     server: {
-      port: 5173,
+      // localHttp는 HTTPS 개발 서버와 함께 띄울 수 있게 포트를 달리한다.
+      port: localHttp ? 5174 : 5173,
       // 같은 Wi-Fi의 휴대폰이 https://<PC의 LAN 주소>:5173으로 접속하도록 모든 네트워크 인터페이스에 연다.
-      host: true,
+      // localHttp는 인증서 없이 열리므로 이 PC에서만 받는다.
+      host: localHttp ? 'localhost' : true,
       // 개발 중에는 /api를 백엔드로 넘겨 같은 출처로 동작시킨다(CORS 설정 없음).
       proxy: {
         '/api': {

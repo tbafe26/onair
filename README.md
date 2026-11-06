@@ -51,7 +51,7 @@ PC의 LAN 주소 찾기:
 | `backend/.env` | `H2_DB_PATH` | `~/.onair/db/onair` | H2 DB 파일 위치(확장자 제외) |
 | `backend/.env` | `STORAGE_DIR` | `~/.onair/videos` | 영상·썸네일 저장 폴더 |
 | `backend/.env` | `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
-| `backend/.env` | `ALLOWED_ORIGINS` | `https://*:5173` | 시그널링 WebSocket이 받아들일 Origin 패턴(쉼표로 구분) |
+| `backend/.env` | `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | 시그널링 WebSocket이 받아들일 Origin 패턴(쉼표로 구분) |
 | `backend/.env` | `MAX_LIVE_VIEWERS` | `5` | 한 라이브방송의 동시 시청자 상한 |
 | `frontend/.env` | `API_PROXY_TARGET` | `http://localhost:8080` | 개발 서버가 `/api`를 넘길 백엔드 주소 |
 
