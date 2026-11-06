@@ -13,7 +13,6 @@ import { MoreBroadcastsPanel } from '../components/MoreBroadcastsPanel'
 import { Button } from '../components/ui/button'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { formatDateTime } from '../lib/format'
-import { browserViewerDeps } from '../live/browser-deps'
 import { useLiveViewer } from '../live/useLiveViewer'
 
 export function BroadcastDetailPage() {
@@ -127,7 +126,7 @@ function LiveStatusBox({ text, thumbnailUrl }: { text: string; thumbnailUrl: str
 
 /** 방송 중인 라이브방송의 영상 영역. 소리 없이 자동 재생하고, 버튼으로 소리를 켠다. */
 function LiveViewer({ broadcastId, thumbnailUrl }: { broadcastId: number; thumbnailUrl: string | null }) {
-  const viewer = useLiveViewer(browserViewerDeps, broadcastId)
+  const viewer = useLiveViewer(broadcastId)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [soundOn, setSoundOn] = useState(false)
   const stream = viewer.phase === 'playing' ? viewer.stream : null
