@@ -1,10 +1,11 @@
 # 온에어
 
-녹화한 영상을 올려 재생하고, 휴대폰 카메라로 라이브 송출해 다른 화면에서 시청하는 방송 서비스입니다. 로그인한 사용자가 자기 방송을 관리하고, 방송마다 댓글(라이브방송에서는 실시간 채팅)을 남깁니다.
+녹화한 영상을 올려 재생하고, 휴대폰 카메라로 라이브 송출해 다른 화면에서 시청하는 방송 서비스입니다. 로그인한 사용자가 자기 방송을 관리하고, 방송마다 댓글(라이브방송에서는 실시간 채팅)을 남기며, 방송 중인 라이브방송에는 토스페이먼츠 테스트 결제로 후원합니다.
 
 - 1단계: 녹화방송 등록·시청
 - 2단계: 휴대폰 라이브 송출·시청
 - 3단계: 회원가입·로그인, 방송 소유자 권한, 댓글·채팅
+- 4단계: 라이브방송 후원(토스페이먼츠 테스트 결제), 후원 내역·합계
 
 버전별 변경 내용은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
 
@@ -48,6 +49,8 @@ pnpm dev
 | 댓글·채팅 읽기 | ✅ | ✅ | ✅ | ✅ |
 | 녹화방송 등록, 라이브 송출 시작 | ❌ 401 | ✅ | ✅ | ✅ |
 | 댓글 쓰기, 채팅 쓰기(방송 중일 때) | ❌ 401 | ✅ | ✅ | ✅ |
+| 후원 내역·합계 보기 | ✅ | ✅ | ✅ | ✅ |
+| 방송 중인 라이브방송에 후원 | ❌ 401 | ✅ | ❌ 403 (자기 방송) | ✅ |
 | 방송 제목 수정·삭제, 송출 종료 | ❌ 401 | ❌ 403 | ✅ | ❌ 403 |
 | 송출자로 참가(송출 키도 맞아야 함) | ❌ `not-owner` | ❌ `not-owner` | ✅ | ❌ `not-owner` |
 | 녹화방송 댓글 삭제 | ❌ 401 | ❌ 403 | ❌ 403 | ✅ |
@@ -81,7 +84,7 @@ pnpm dev
 
 ## 환경변수
 
-설정하지 않아도 기본값으로 실행됩니다. 바꿀 때만 예시 파일을 복사해 고칩니다. 비밀 값은 없습니다(로그인은 서버 세션이라 서명 키가 필요 없습니다).
+후원을 쓰지 않으면 설정하지 않아도 기본값으로 실행됩니다(로그인은 서버 세션이라 서명 키가 필요 없습니다). 바꿀 때만 예시 파일을 복사해 고칩니다. 토스 키를 비우면 후원 주문만 503으로 거절되고 나머지는 그대로 동작합니다.
 
 ```bash
 cp backend/.env.example backend/.env
@@ -95,7 +98,12 @@ cp frontend/.env.example frontend/.env
 | `backend/.env` | `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
 | `backend/.env` | `MAX_LIVE_VIEWERS` | `5` | 라이브방송 하나의 동시 시청자 상한 |
 | `backend/.env` | `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | 연결 신호·채팅(WebSocket)을 받을 화면 주소 |
+| `backend/.env` | `TOSS_CLIENT_KEY` | 없음 | 토스페이먼츠 결제위젯 클라이언트 키(`test_gck_…`) |
+| `backend/.env` | `TOSS_SECRET_KEY` | 없음 | 토스페이먼츠 결제위젯 시크릿 키(`test_gsk_…`) |
+| `backend/.env` | `TOSS_TEST_CODE` | 없음 | 승인 단계 실패를 재현하는 값(예: `REJECT_CARD_PAYMENT`). 테스트 시크릿 키일 때만 쓰입니다 |
 | `frontend/.env` | `API_PROXY_TARGET` | `http://localhost:8080` | 개발 서버가 API 요청을 넘길 백엔드 주소 |
+
+**토스 키:** 토스페이먼츠 개발자 문서·샘플의 공개 **결제위젯** 테스트 키(`test_gck_…`, `test_gsk_…`)를 `backend/.env`에만 넣습니다. 저장소에 올리지 않습니다. 모두가 같이 쓰는 공용 테스트 상점이므로 결제창과 요청에 실제 개인정보를 넣지 않습니다. 클라이언트 키는 서버가 주문 응답에 담아 주므로 프런트 `.env`는 그대로 둡니다.
 
 ## 구현 범위
 
@@ -118,7 +126,12 @@ cp frontend/.env.example frontend/.env
 - 녹화방송 영상 아래에 댓글(1~300자, 최신순)을 쓰고, 작성자는 자기 댓글을 지웁니다.
 - 라이브방송에는 실시간 채팅 패널(데스크톱은 오른쪽, 휴대폰은 영상 아래)이 있고, 송출 화면에서도 채팅합니다. 채팅은 저장되어 방송이 끝난 뒤에도 읽을 수 있습니다.
 
-**범위 밖:** 도네이션, 소셜 로그인, 비밀번호 변경·찾기, 회원 탈퇴, 댓글 수정·답글, 채팅 관리(숨기기·차단), 검색, 라이브 녹화·다시보기, 다른 네트워크에서의 송출·시청
+**4단계: 후원**
+- 방송 중인 남의 라이브방송 시청 화면의 "후원" 버튼으로 금액(1,000~500,000원, 1,000원 단위)과 메시지(선택, 100자 이하)를 정하고 토스페이먼츠 결제위젯으로 테스트 결제합니다. 받는 사람은 방송 소유자입니다.
+- 서버가 결제 승인, 금액, 받는 사람을 확인한 뒤에 후원을 확정합니다. 같은 승인이나 승인 통지가 반복되어도 한 번만 적립합니다.
+- 확정된 후원은 후원 내역·합계에 보이고, 방송 중이면 채팅 패널에 실시간으로 나타납니다. 결제창을 닫으면 취소, 승인이 거절되면 실패로 기록하며 내역에는 확정만 보입니다.
+
+**범위 밖:** 실제 결제, 정산·환불, 녹화방송 후원, 소셜 로그인, 비밀번호 변경·찾기, 회원 탈퇴, 댓글 수정·답글, 채팅 관리(숨기기·차단), 검색, 라이브 녹화·다시보기, 다른 네트워크에서의 송출·시청
 
 ## 직접 확인 절차
 
@@ -225,3 +238,101 @@ call b.txt DELETE /broadcasts/$REC/comments/$CID       # 204
 - 방송 중인 라이브방송을 지우면 409, 4번으로 종료한 라이브방송에 채팅을 쓰면 409입니다.
 - 토큰 없이 보낸 요청(`curl -X POST $API/broadcasts/$REC/comments ...`)은 403입니다.
 - 송출자 참가 검사(`not-owner`)는 송출 키가 송출 화면 밖으로 나오지 않아 손으로 재현하기 어렵습니다. 자동 테스트(`SignalingWebSocketTest`)가 비로그인·다른 사용자·소유자 연결로 확인합니다.
+
+### 4단계: 후원
+
+백엔드를 띄우기 전에 `backend/.env`에 토스 테스트 키를 넣어 둡니다([환경변수](#환경변수)). 후원할 사용자(B)와 방송 소유자(A)를 가입시키고, A가 휴대폰에서 송출을 시작한 상태로 B로 시청합니다. 결제창은 PC(`https://localhost:5173`)에서도 휴대폰에서도 열립니다.
+
+> **주의:** 이 결제는 모두가 같이 쓰는 공용 테스트 상점입니다. 결제수단은 **퀵계좌이체**를 고르고, 토스가 화면에 보여 주는 테스트 값(미리 채워진 테스트 휴대폰번호, 테스트 비밀번호)만 씁니다. **카드번호, 실제 계좌, 실제 휴대폰번호는 절대 넣지 않습니다.** 다른 입력을 요구하는 화면이 나오면 멈추고 닫습니다.
+
+**화면에서 확인**
+
+| # | 누가 | 할 일 | 확인할 것 |
+| --- | --- | --- | --- |
+| 1 | B | 방송 중인 A의 시청 화면에서 "후원" → 금액 입력(예: 1,000) → "다음" | 받는 사람(A 닉네임)과 금액 확인, "테스트 결제입니다" 안내, 결제위젯 표시 |
+| 2 | B | 퀵계좌이체를 고르고 "후원하기" → 토스 화면의 테스트 값만 입력해 결제 | 방송 화면으로 돌아와 성공 알림, 후원 합계·건수 증가, 내역 맨 위에 B의 후원, 채팅 패널에 후원 표시(A의 송출 화면과 다른 시청 화면에도) |
+| 3 | B | 다시 "후원" → "다음" → "후원하기"를 누른 뒤 결제창을 닫음 | "후원을 취소했습니다" 알림, 합계·내역은 그대로 |
+| 4 | B | `backend/.env`에 `TOSS_TEST_CODE=REJECT_CARD_PAYMENT`를 넣고 백엔드를 다시 띄운 뒤(다시 로그인·송출) 2번처럼 결제 | 승인이 거절되어 "후원하지 못했습니다" 알림, 합계·내역은 그대로. 확인이 끝나면 `TOSS_TEST_CODE`를 지웁니다 |
+| 5 | A | 자기 방송 시청 화면 | 후원 버튼이 보이지 않음 |
+| 6 | 비로그인 | 방송 시청 화면 | 후원 버튼 대신 "로그인 후 후원할 수 있습니다", 내역·합계는 보임 |
+| 7 | B | 송출이 끝난 방송 화면 | 후원 버튼이 없고, 내역은 남음 |
+
+취소와 실패는 "후원 기록"으로 남지만 내역과 합계에는 확정된 후원만 보입니다.
+
+**API로 확인(화면을 거치지 않은 요청도 서버가 거절하는지)**
+
+[3단계의 API 확인](#3단계-인증인가와-댓글)에서 만든 `API`, `token`, `call`, `json`, 쿠키 파일(`guest.txt`, `a.txt`, `b.txt`)을 그대로 씁니다. 방송 소유자는 A, 후원자는 B이고 `LIVE`는 방송 중인 A의 라이브방송 id입니다. 서버는 송출자가 연결을 끊으면 방송을 종료하므로 휴대폰 송출을 켜 둔 채 진행합니다.
+
+```bash
+order() { # order <쿠키 파일> <방송 id> <금액> → 주문 번호 출력
+  curl -s -b "$1" -c "$1" -X POST -H "X-XSRF-TOKEN: $(token "$1")" "${json[@]}" \
+    -d "{\"amount\":$3}" "$API/broadcasts/$2/donations" | grep -o '"orderId":"[^"]*"' | cut -d'"' -f4
+}
+```
+
+*주문 만들기와 권한* (한 줄마다 상태 코드를 확인합니다)
+
+| 요청 | 결과 |
+| --- | --- |
+| `call guest.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1000}'` | 401 |
+| `call a.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1000}'` (자기 방송) | 403 |
+| `call b.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1500}'` (1,000원 단위가 아님. 500, 600000도 400) | 400 |
+| `call b.txt POST /broadcasts/<녹화방송 id>/donations "${json[@]}" -d '{"amount":1000}'` | 409 |
+| `call b.txt POST /broadcasts/<종료된 라이브방송 id>/donations "${json[@]}" -d '{"amount":1000}'` | 409 |
+| `call b.txt POST /broadcasts/9999/donations "${json[@]}" -d '{"amount":1000}'` | 404 |
+| `call b.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1000}'` | 201 |
+
+*금액 변조:* 대기 중인 주문에 다른 금액으로 승인을 요청하면 결제 서비스를 부르기 전에 거절하고, 그 주문을 실패로 기록합니다.
+
+```bash
+ORD=$(order b.txt $LIVE 1000)
+call b.txt POST /donations/confirm "${json[@]}" -d "{\"paymentKey\":\"<paymentKey>\",\"orderId\":\"$ORD\",\"amount\":2000}"   # 400
+call b.txt POST /donations/confirm "${json[@]}" -d "{\"paymentKey\":\"<paymentKey>\",\"orderId\":\"$ORD\",\"amount\":1000}"   # 409 (이미 실패로 기록됨)
+```
+
+여기서 `<paymentKey>`는 아무 문자열이어도 400이 나옵니다(승인 전에 막으므로).
+
+*다른 사용자와 없는 주문:*
+
+```bash
+ORD=$(order b.txt $LIVE 2000)
+body="{\"paymentKey\":\"<paymentKey>\",\"orderId\":\"$ORD\",\"amount\":2000}"
+call guest.txt POST /donations/confirm "${json[@]}" -d "$body"   # 401
+call a.txt POST /donations/confirm "${json[@]}" -d "$body"       # 403 (다른 사용자의 주문)
+call b.txt POST /donations/confirm "${json[@]}" -d '{"paymentKey":"<paymentKey>","orderId":"<orderId>","amount":2000}'   # 404 (없는 주문)
+call a.txt POST /donations/$ORD/fail "${json[@]}" -d '{"code":"PAY_PROCESS_CANCELED"}'   # 403
+call b.txt POST /donations/$ORD/fail "${json[@]}" -d '{"code":"PAY_PROCESS_CANCELED"}'   # 200, 응답 status는 CANCELED
+```
+
+*승인 통지:* 로그인과 CSRF 토큰 없이 받는 주소이고, 결과와 상관없이 200을 돌려줍니다. 본문은 믿지 않고 서버가 결제 서비스에서 결제를 다시 조회해 확정합니다.
+
+```bash
+NOTIFY='{"eventType":"PAYMENT_STATUS_CHANGED","data":{"paymentKey":"<paymentKey>","orderId":"<orderId>","status":"DONE"}}'
+for i in 1 2 3; do
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d "$NOTIFY" "$API/payments/toss/notifications"   # 모두 200
+done
+curl -s "$API/broadcasts/$LIVE/donations"   # 모르는 주문이면 합계가 바뀌지 않음
+```
+
+**실제 결제로 만든 `<paymentKey>`가 필요한 확인**
+
+승인 중복과 승인 통지 중복은 토스가 발급한 진짜 `<paymentKey>`가 있어야 합니다. 위 화면 확인 2번을 하면서, 브라우저 개발자 도구의 네트워크 탭에서 `confirm` 요청의 요청 본문(`paymentKey`, `orderId`, `amount`)을 본인 터미널에 복사합니다(성공 주소의 쿼리 문자열에도 같은 값이 있습니다). 이 값은 이슈·PR·커밋·스크린샷에 붙이지 않습니다.
+
+```bash
+PK=<paymentKey>; ORD=<orderId>; AMT=<금액>
+body="{\"paymentKey\":\"$PK\",\"orderId\":\"$ORD\",\"amount\":$AMT}"
+# 승인 중복: 화면이 이미 승인한 같은 요청을 다시 보낸다
+call b.txt POST /donations/confirm "${json[@]}" -d "$body"   # 200 (같은 결과)
+# 동시 승인: 같은 요청 다섯 개를 한꺼번에 보낸다
+for i in 1 2 3 4 5; do call b.txt POST /donations/confirm "${json[@]}" -d "$body" & done; wait   # 모두 200
+# 승인 통지 중복: 확정된 결제의 통지를 여러 번 보낸다
+NOTIFY="{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"$PK\",\"orderId\":\"$ORD\",\"status\":\"DONE\"}}"
+for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d "$NOTIFY" "$API/payments/toss/notifications"; done   # 모두 200
+curl -s "$API/broadcasts/$LIVE/donations"   # 합계 건수와 내역이 그대로(한 건)
+# 금액을 바꾼 승인은 확정된 주문에도 400
+call b.txt POST /donations/confirm "${json[@]}" -d "{\"paymentKey\":\"$PK\",\"orderId\":\"$ORD\",\"amount\":2000}"   # 400
+```
+
+- 송출이 끝난 뒤에 승인해도 이미 시작한 결제는 확정됩니다. 종료된 방송에 새 주문은 만들 수 없습니다(409).
+- 토스 키를 비우고 백엔드를 띄우면 새 주문이 503입니다.
+- 결제창을 확인한 결과(`paymentKey`, `orderId`, 화면 캡처)는 공개되는 곳에 붙이지 않습니다.
