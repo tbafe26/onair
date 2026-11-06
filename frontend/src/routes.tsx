@@ -4,6 +4,7 @@ import { AppShell } from './layout/AppShell'
 import { BroadcastCreatePage } from './pages/BroadcastCreatePage'
 import { BroadcastDetailPage } from './pages/BroadcastDetailPage'
 import { BroadcastListPage } from './pages/BroadcastListPage'
+import { DonationFailPage } from './pages/DonationFailPage'
 import { DonationSuccessPage } from './pages/DonationSuccessPage'
 import { LiveBroadcastPage } from './pages/LiveBroadcastPage'
 import { MyBroadcastsPage } from './pages/MyBroadcastsPage'
@@ -45,6 +46,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireLogin>
             <DonationSuccessPage />
+          </RequireLogin>
+        ),
+      },
+      {
+        path: '/donations/fail',
+        element: (
+          <RequireLogin>
+            <DonationFailPage />
           </RequireLogin>
         ),
       },

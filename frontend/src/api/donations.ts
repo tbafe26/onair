@@ -61,6 +61,17 @@ export async function confirmDonation(input: {
   return response.data
 }
 
+/** 사용자가 결제창을 닫았을 때 토스가 실패 주소로 넘기는 코드. */
+export const PAYMENT_CANCELED_CODE = 'PAY_PROCESS_CANCELED'
+
+/** 결제창이 실패·취소로 돌아왔음을 서버에 알린다. 대기 후원만 바뀌고 이미 정해진 주문은 그대로다. */
+export async function recordDonationFailure(orderId: string, code: string): Promise<{ status: string }> {
+  const response = await apiClient.post<{ status: string }>(`/api/donations/${encodeURIComponent(orderId)}/fail`, {
+    code,
+  })
+  return response.data
+}
+
 /** 승인 실패를 사용자에게 보일 문장으로 바꾼다. 서버가 상태 코드로 이유를 구분한다. */
 export function describeConfirmFailure(error: unknown): string {
   const status = axios.isAxiosError(error) ? error.response?.status : undefined
