@@ -241,7 +241,7 @@ public class Donations implements BroadcastDeletionListener {
         if (amount == null || amount < MIN_AMOUNT || amount > MAX_AMOUNT || amount % AMOUNT_UNIT != 0) {
             violations.add(new FieldViolation("amount", "금액은 1,000원 이상 500,000원 이하, 1,000원 단위로 입력하세요"));
         }
-        if (message != null && message.length() > Donation.MAX_MESSAGE_LENGTH) {
+        if (message != null && message.codePointCount(0, message.length()) > Donation.MAX_MESSAGE_LENGTH) {
             violations.add(new FieldViolation("message",
                     "메시지는 " + Donation.MAX_MESSAGE_LENGTH + "자 이하로 입력하세요"));
         }

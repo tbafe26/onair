@@ -48,7 +48,8 @@ public class Donation {
     @Column(nullable = false)
     private long amount;
 
-    @Column(length = MAX_MESSAGE_LENGTH)
+    // 글자 수는 코드 포인트로 세고 DB는 UTF-16 단위로 세므로, 이모지 한 글자가 두 칸을 쓴다.
+    @Column(length = MAX_MESSAGE_LENGTH * 2)
     private String message;
 
     @Enumerated(EnumType.STRING)

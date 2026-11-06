@@ -49,6 +49,17 @@ class DonationOrderApiTest extends DonationApiTestSupport {
     }
 
     @Test
+    void 메시지_길이는_이모지도_한_글자로_센다() throws Exception {
+        int id = 라이브방송을_시작한다();
+        RequestPostProcessor viewer = 시청자().credentials();
+
+        주문한다(viewer, id, Map.of("amount", 5000, "message", "🙂".repeat(101)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("message"));
+        주문한다(viewer, id, Map.of("amount", 5000, "message", "🙂".repeat(100))).andExpect(status().isCreated());
+    }
+
+    @Test
     void 메시지는_100자까지고_넘으면_400이다() throws Exception {
         int id = 라이브방송을_시작한다();
         RequestPostProcessor viewer = 시청자().credentials();

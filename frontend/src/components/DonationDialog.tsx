@@ -3,6 +3,8 @@ import {
   DONATION_AMOUNT_CHOICES,
   DONATION_AMOUNT_RULE,
   MAX_DONATION_MESSAGE_LENGTH,
+  clipDonationMessage,
+  donationMessageLength,
   checkDonationAmount,
   createDonationOrder,
   decodeDonationFailure,
@@ -174,14 +176,13 @@ export function DonationDialog({
           <textarea
             id="donation-message"
             rows={3}
-            maxLength={MAX_DONATION_MESSAGE_LENGTH}
             value={message}
             aria-invalid={failure.message ? true : undefined}
             className="w-full resize-none rounded-xl border border-border bg-background p-3 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onChange={(event) => setMessage(event.target.value)}
+            onChange={(event) => setMessage(clipDonationMessage(event.target.value))}
           />
           <p className="text-sm text-sub">
-            {message.length}/{MAX_DONATION_MESSAGE_LENGTH}자
+            {donationMessageLength(message)}/{MAX_DONATION_MESSAGE_LENGTH}자
           </p>
           {failure.message && <p className="text-sm text-destructive">{failure.message}</p>}
         </div>
