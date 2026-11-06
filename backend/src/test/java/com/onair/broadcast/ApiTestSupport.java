@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestClockConfig.class)
-abstract class ApiTestSupport {
+public abstract class ApiTestSupport {
 
     @Autowired
     protected MockMvc mockMvc;
@@ -48,6 +48,7 @@ abstract class ApiTestSupport {
         repository.deleteAll();
         // 녹화방송은 영상을 PERSIST로만 연결해 방송을 지워도 영상 행이 남는다. 남으면 앞선 테스트의 영상이 섞인다.
         jdbc.update("delete from video");
+        jdbc.update("delete from app_user");
         Files.createDirectories(storageDir);
         try (var files = Files.list(storageDir)) {
             for (Path file : files.toList()) {

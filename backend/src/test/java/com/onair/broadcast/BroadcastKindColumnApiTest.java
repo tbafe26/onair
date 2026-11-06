@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.onair.auth.Csrf;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
@@ -16,7 +17,7 @@ class BroadcastKindColumnApiTest extends ApiTestSupport {
 
     @Test
     void 녹화방송을_등록하면_kind_컬럼에_RECORDING이_기록된다() throws Exception {
-        mockMvc.perform(multipart("/api/broadcasts")
+        mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
                         .param("title", "구분 컬럼")
                         .param("durationSeconds", "12.5"))

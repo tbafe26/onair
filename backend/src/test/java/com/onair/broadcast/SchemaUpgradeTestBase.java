@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.onair.auth.Csrf;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -49,11 +50,11 @@ abstract class SchemaUpgradeTestBase extends ApiTestSupport {
 
     @Test
     void 업그레이드한_DB에서_녹화방송과_라이브방송을_저장하고_읽을_수_있다() throws Exception {
-        mockMvc.perform(multipart("/api/broadcasts")
+        mockMvc.perform(multipart("/api/broadcasts").with(Csrf.token())
                         .file(new MockMultipartFile("video", "a.mp4", "video/mp4", MP4_BYTES))
                         .param("title", "업그레이드 녹화"))
                 .andExpect(status().isCreated());
-        mockMvc.perform(multipart("/api/broadcasts/live").param("title", "업그레이드 라이브"))
+        mockMvc.perform(multipart("/api/broadcasts/live").with(Csrf.token()).param("title", "업그레이드 라이브"))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/broadcasts"))

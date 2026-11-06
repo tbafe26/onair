@@ -2,6 +2,7 @@ package com.onair.broadcast;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.onair.auth.Csrf;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -66,6 +67,8 @@ class MultipartLimitApiTest {
         return RestClient.create("http://localhost:" + port)
                 .post()
                 .uri("/api/broadcasts")
+                .header("Cookie", Csrf.COOKIE + "=" + Csrf.TOKEN)
+                .header(Csrf.HEADER, Csrf.TOKEN)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body)
                 .retrieve()

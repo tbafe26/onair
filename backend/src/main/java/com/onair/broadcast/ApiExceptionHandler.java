@@ -1,5 +1,7 @@
 package com.onair.broadcast;
 
+import com.onair.auth.DuplicateLoginIdException;
+import com.onair.auth.InvalidCredentialsException;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -38,6 +40,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .toList();
         problem.setProperty("errors", errors);
         return respond(e, problem, new HttpHeaders(), request);
+    }
+
+    @ExceptionHandler(DuplicateLoginIdException.class)
+    ResponseEntity<Object> handleDuplicateLoginId(DuplicateLoginIdException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.CONFLICT, "아이디 중복", e.getMessage()), new HttpHeaders(), request);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ResponseEntity<Object> handleInvalidCredentials(InvalidCredentialsException e, WebRequest request) {
+        return respond(e, problem(HttpStatus.UNAUTHORIZED, "로그인 실패", e.getMessage()), new HttpHeaders(), request);
     }
 
     @ExceptionHandler(BroadcastNotFoundException.class)
