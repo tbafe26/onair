@@ -83,3 +83,17 @@ export function manageFailureMessage(action: ManageAction, failure: ApiFailure):
       return FALLBACK[action]
   }
 }
+
+export interface BroadcastTime {
+  /** 라이브방송만 시작·종료 라벨이 붙는다. */
+  label: '시작' | '종료' | null
+  at: string
+}
+
+/** 상세 머리에 보여 줄 시각들. */
+export function broadcastTimes(broadcast: { kind: BroadcastKind; createdAt: string; endedAt?: string | null }): BroadcastTime[] {
+  if (broadcast.kind === 'RECORDING') return [{ label: null, at: broadcast.createdAt }]
+  const times: BroadcastTime[] = [{ label: '시작', at: broadcast.createdAt }]
+  if (broadcast.endedAt) times.push({ label: '종료', at: broadcast.endedAt })
+  return times
+}

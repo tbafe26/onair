@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AuthState } from '../auth/auth-context'
-import { canDeleteComment, manageFailureMessage, viewBroadcast } from './broadcast-view'
+import { broadcastTimes, canDeleteComment, manageFailureMessage, viewBroadcast } from './broadcast-view'
 
 const owner = { id: 1, nickname: '주인' }
 const recording = { id: 10, kind: 'RECORDING' as const, owner }
@@ -60,5 +60,20 @@ describe('manageFailureMessage', () => {
     ['end', { kind: 'unknown' }, '송출을 종료하지 못했습니다. 잠시 뒤 다시 시도하세요'],
   ] as const)('%s / %j', (action, failure, message) => {
     expect(manageFailureMessage(action, failure)).toBe(message)
+  })
+})
+
+describe('broadcastTimes', () => {
+  it('녹화방송은 등록 시각만, 라벨 없이 준다', () => {
+    expect(broadcastTimes({ kind: 'RECORDING', createdAt: 'a' })).toEqual([{ label: null, at: 'a' }])
+  })
+  it('방송 중인 라이브방송은 시작 시각만 준다', () => {
+    expect(broadcastTimes({ kind: 'LIVE', createdAt: 'a', endedAt: null })).toEqual([{ label: '시작', at: 'a' }])
+  })
+  it('종료된 라이브방송은 시작과 종료를 준다', () => {
+    expect(broadcastTimes({ kind: 'LIVE', createdAt: 'a', endedAt: 'b' })).toEqual([
+      { label: '시작', at: 'a' },
+      { label: '종료', at: 'b' },
+    ])
   })
 })
