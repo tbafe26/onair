@@ -14,7 +14,7 @@
 
 로컬 파일이 원본이고, 같은 내용을 GitHub 저장소(`tbafe26/onair`)의 이슈로도 발행합니다.
 
-- 스펙은 부모 이슈, 티켓은 그 하위 이슈(sub-issue)로 발행합니다. 티켓의 선행 관계는 GitHub의 "blocked by" 관계로 겁니다.
+- 스펙은 부모 이슈, 티켓은 그 하위 이슈(sub-issue)로 발행합니다. 부모 이슈에는 스펙 전체가 아니라 목표, 핵심 결정, 범위 밖만 한 화면 분량으로 요약합니다. PR 본문은 Summary, Evidence, Merge Danger 형식으로 짧게 씁니다. 티켓의 선행 관계는 GitHub의 "blocked by" 관계로 겁니다.
 - 칩은 세 가지만 붙입니다. 트리아지 상태는 GitHub에 라벨로 두지 않고 로컬 파일의 `Status:` 줄에만 씁니다(GitHub에서는 열림·닫힘과 blocked by 관계로 드러납니다).
   - 종류 라벨 하나: `feat` `fix` `refactor` `test` `docs` `chore`(커밋·브랜치 type과 같음)
   - 영역 라벨 하나 이상: `backend` `frontend` `ci`
