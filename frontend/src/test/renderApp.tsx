@@ -3,12 +3,15 @@ import { render } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AuthProvider } from '../auth/AuthProvider'
 import { LiveProvider } from '../live/LiveProvider'
+import { PaymentProvider } from '../payments/PaymentProvider'
 import { routes } from '../routes'
 import { createFakeLive } from './fakeLive'
+import { createFakePaymentWindow } from './fakePaymentWindow'
 
-/** 라우터와 TanStack Query를 포함한 실제 앱을 지정한 주소에서 그린다. 송출·시청 모듈은 가짜(fake)를 끼우며, 테스트가 그 상태를 바꾼다. */
+/** 라우터와 TanStack Query를 포함한 실제 앱을 지정한 주소에서 그린다. 송출·시청 모듈과 결제창은 가짜(fake)를 끼우며, 테스트가 그 상태를 바꾼다. */
 export function renderApp(initialPath = '/') {
   const fake = createFakeLive()
+  const payment = createFakePaymentWindow()
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -17,10 +20,12 @@ export function renderApp(initialPath = '/') {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <LiveProvider live={fake.live}>
-          <RouterProvider router={router} />
+          <PaymentProvider paymentWindow={payment}>
+            <RouterProvider router={router} />
+          </PaymentProvider>
         </LiveProvider>
       </AuthProvider>
     </QueryClientProvider>,
   )
-  return { ...result, router, fake }
+  return { ...result, router, fake, payment }
 }

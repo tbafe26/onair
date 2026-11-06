@@ -6,6 +6,7 @@ import { shouldRetryQuery } from './api/query-retry'
 import { AuthProvider } from './auth/AuthProvider'
 import './index.css'
 import { LiveProvider } from './live/LiveProvider'
+import { PaymentProvider } from './payments/PaymentProvider'
 import { routes } from './routes'
 
 // 기본값은 404에도 3번 다시 시도해 "방송을 찾을 수 없습니다"가 몇 초 늦게 나온다.
@@ -17,7 +18,9 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <LiveProvider>
-          <RouterProvider router={router} />
+          <PaymentProvider>
+            <RouterProvider router={router} />
+          </PaymentProvider>
         </LiveProvider>
       </AuthProvider>
     </QueryClientProvider>
