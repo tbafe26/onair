@@ -47,7 +47,7 @@ export function DonationNotice() {
       }`}
     >
       <p className="font-semibold">{notice.text}</p>
-      <Button type="button" variant="outline" size="sm" onClick={() => setNotice(null)}>
+      <Button type="button" variant="outline" onClick={() => setNotice(null)}>
         닫기
       </Button>
     </div>
