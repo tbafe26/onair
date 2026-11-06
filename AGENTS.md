@@ -56,7 +56,7 @@ cd frontend && pnpm lint && pnpm test && pnpm build
 - CI: gitleaks가 커밋 이력 전체를 검사하고, `main` 보호 규칙이 이 검사의 통과를 병합 조건으로 건다.
 - GitHub: secret scanning과 push protection이 알려진 형식의 토큰이 담긴 push를 거절한다.
 - 코드: 비밀 값과 송출 키를 로그, 오류 응답, 조회 응답에 넣지 않는다. 프런트에서 `VITE_`로 시작하는 환경변수는 번들에 그대로 들어가므로 비밀 값을 두지 않는다.
-- 커밋 작성자 이메일은 GitHub noreply 주소를 쓴다. 이슈, PR, 릴리스 본문에도 비밀 값이나 개인 정보를 넣지 않는다.
+- 커밋 작성자 이메일은 GitHub noreply 주소를 쓴다. 이슈, PR, 릴리스 본문에도 비밀 값이나 개인 정보(이메일, 사설 IP 주소, 기기·네트워크 이름 등)를 넣지 않는다. 주소는 `<PC의 LAN 주소>`처럼 자리표시로 쓴다.
 - 비밀 값이 이미 커밋되었다면 기록에서 지우는 것보다 먼저 그 값을 폐기·교체한다.
 - gh 토큰의 `workflow` 권한은 평소에 두지 않는다. `.github/workflows/`를 바꾼 커밋을 push할 때만 사용자가 `gh auth refresh -h github.com -s workflow`로 잠시 추가하고, push가 끝나면 `gh auth refresh -h github.com -r workflow`로 바로 회수한다. 권한 추가와 회수는 브라우저 인증이 필요해 사용자가 직접 한다.
 
