@@ -33,6 +33,7 @@ tasks.withType<Test> {
     useJUnitPlatform()
     // 계약 파일이 바뀌면 캐시된 결과를 쓰지 않고 테스트를 다시 돌린다.
     inputs.file("../contracts/signaling.json")
+    inputs.file("../contracts/broadcast-responses.json")
     // 테스트 JVM은 짧게 살다 끝나므로 JIT 최적화 단계를 낮춰 Spring 컨텍스트 기동을 앞당긴다.
     jvmArgs("-XX:TieredStopAtLevel=1")
     // 실패한 테스트는 리포트 파일을 열지 않아도 콘솔에서 원인을 볼 수 있게 한다.

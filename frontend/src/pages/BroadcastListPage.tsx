@@ -3,7 +3,7 @@ import { Clapperboard, Loader2, Radio } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
-import { fetchBroadcasts, type BroadcastKindFilter } from '../api/broadcasts'
+import { fetchBroadcasts, type BroadcastKind } from '../api/broadcasts'
 import { BroadcastCard } from '../components/BroadcastCard'
 import { BroadcastCardSkeleton } from '../components/BroadcastCardSkeleton'
 import { Button } from '../components/ui/button'
@@ -12,17 +12,17 @@ import { Button } from '../components/ui/button'
 const gridClass =
   'mt-6 grid grid-cols-1 gap-x-[14px] gap-y-[30px] sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'
 
-const tabs: { kind: BroadcastKindFilter; label: string }[] = [
+const tabs: { kind: BroadcastKind; label: string }[] = [
   { kind: 'LIVE', label: '라이브' },
   { kind: 'RECORDING', label: '녹화방송' },
 ]
 
-const DEFAULT_KIND: BroadcastKindFilter = 'LIVE'
+const DEFAULT_KIND: BroadcastKind = 'LIVE'
 
 // 라이브 탭은 방송 상태가 바뀌므로 주기적으로 다시 불러온다. 창에 초점이 돌아오면(기본 동작) 바로 갱신된다.
 const LIVE_REFETCH_INTERVAL_MS = 15_000
 
-function parseKind(value: string | null): BroadcastKindFilter {
+function parseKind(value: string | null): BroadcastKind {
   return tabs.find((t) => t.kind === value)?.kind ?? DEFAULT_KIND
 }
 
