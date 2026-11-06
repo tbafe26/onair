@@ -6,7 +6,6 @@ import com.onair.api.InvalidRequestException;
 import com.onair.api.Requester;
 import com.onair.auth.AppUser;
 import com.onair.auth.AppUserRepository;
-import com.onair.comment.Comments;
 import com.onair.media.MediaFileMissingException;
 import com.onair.media.MediaStorage;
 import com.onair.media.MultipartInputs;
@@ -32,15 +31,16 @@ public class BroadcastService {
     private final MediaStorage storage;
     private final RegistrationRules rules;
     private final AppUserRepository users;
-    private final Comments comments;
+    private final List<BroadcastDeletionListener> deletionListeners;
     private final Clock clock;
     private final TransactionTemplate transaction;
 
     BroadcastService(BroadcastRepository repository, MediaStorage storage, RegistrationRules rules,
-            AppUserRepository users, Comments comments, PlatformTransactionManager transactionManager,
+            AppUserRepository users, List<BroadcastDeletionListener> deletionListeners,
+            PlatformTransactionManager transactionManager,
             Clock clock) {
         this.clock = clock;
-        this.comments = comments;
+        this.deletionListeners = deletionListeners;
         this.transaction = new TransactionTemplate(transactionManager);
         this.users = users;
         this.repository = repository;
@@ -99,7 +99,7 @@ public class BroadcastService {
                 throw new LiveOnAirException(id);
             }
             List<String> fileKeys = broadcast.ownedFileKeys();
-            comments.deleteAllOf(id);
+            deletionListeners.forEach(listener -> listener.beforeDelete(id));
             repository.delete(broadcast);
             return fileKeys;
         });

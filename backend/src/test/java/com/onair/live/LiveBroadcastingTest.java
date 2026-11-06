@@ -12,7 +12,6 @@ import com.onair.broadcast.LiveStatus;
 import com.onair.broadcast.RegistrationRules;
 import com.onair.broadcast.StartLiveCommand;
 import com.onair.broadcast.StreamKeys;
-import com.onair.comment.Comments;
 import com.onair.media.MediaStorage;
 import com.onair.support.ApiTestSupport;
 import java.time.Instant;
@@ -42,10 +41,10 @@ class LiveBroadcastingTest extends ApiTestSupport {
     PlatformTransactionManager transactionManager;
 
     @Autowired
-    Comments comments;
+    LiveChat chat;
 
     LiveBroadcasting 상한이_있는_모듈(int maxViewers) {
-        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, comments, maxViewers);
+        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, chat, maxViewers);
     }
 
     StartedLive 시작한다(String title) {

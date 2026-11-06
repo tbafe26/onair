@@ -26,6 +26,9 @@ class ChatContractTest extends ApiTestSupport {
     Comments comments;
 
     @Autowired
+    LiveChat chat;
+
+    @Autowired
     LiveBroadcasting live;
 
     List<String> 이름들(JsonNode array) {
@@ -38,7 +41,7 @@ class ChatContractTest extends ApiTestSupport {
     void 서버가_보내는_채팅_메시지의_종류와_필드는_계약과_같다() {
         long id = live.start(new StartLiveCommand("계약", null), owner().userId()).broadcastId();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
         comments.write(id, owner().userId(), "계약 확인");
         live.endByOwner(id, owner().userId());
 
@@ -61,7 +64,7 @@ class ChatContractTest extends ApiTestSupport {
     void 채팅_메시지에_실린_댓글의_JSON_필드는_계약과_같다() {
         long id = live.start(new StartLiveCommand("계약", null), owner().userId()).broadcastId();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
         comments.write(id, owner().userId(), "계약 확인");
 
         // 화면이 받는 모양 그대로(WebSocketPeer와 같은 직렬화)로 바꿔 필드 이름을 본다.

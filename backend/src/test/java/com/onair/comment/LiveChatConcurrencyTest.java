@@ -7,6 +7,7 @@ import com.onair.broadcast.StartLiveCommand;
 import com.onair.live.ChatMessage;
 import com.onair.live.ChatSubscriber;
 import com.onair.live.LiveBroadcasting;
+import com.onair.live.LiveChat;
 import com.onair.live.RecordingSubscriber;
 import com.onair.support.ApiTestSupport;
 import java.util.concurrent.CountDownLatch;
@@ -26,6 +27,9 @@ class LiveChatConcurrencyTest extends ApiTestSupport {
 
     @Autowired
     Comments comments;
+
+    @Autowired
+    LiveChat chat;
 
     @Autowired
     LiveBroadcasting live;
@@ -71,15 +75,15 @@ class LiveChatConcurrencyTest extends ApiTestSupport {
         long slowRoom = 방송을_시작한다("느린 방");
         long otherRoom = 방송을_시작한다("다른 방");
         StuckSubscriber stuck = new StuckSubscriber();
-        comments.subscribe(slowRoom, stuck);
+        chat.subscribe(slowRoom, stuck);
         RecordingSubscriber fast = new RecordingSubscriber();
-        comments.subscribe(otherRoom, fast);
+        chat.subscribe(otherRoom, fast);
         Future<?> blocked = executor.submit(() -> comments.write(slowRoom, userId, "느린 쪽"));
         assertThat(stuck.entered.await(5, TimeUnit.SECONDS)).isTrue();
 
         Future<?> other = executor.submit(() -> {
             comments.write(otherRoom, userId, "다른 쪽");
-            comments.subscribe(otherRoom, new RecordingSubscriber());
+            chat.subscribe(otherRoom, new RecordingSubscriber());
         });
 
         try {

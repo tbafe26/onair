@@ -1,26 +1,26 @@
-package com.onair.comment;
+package com.onair.live;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.onair.broadcast.BroadcastService;
 import com.onair.broadcast.RegistrationForm;
 import com.onair.broadcast.StartLiveCommand;
-import com.onair.live.LiveBroadcasting;
-import com.onair.live.RecordingPeer;
-import com.onair.live.RecordingSubscriber;
-import com.onair.live.SignalMessage;
+import com.onair.comment.CommentView;
+import com.onair.comment.Comments;
 import com.onair.support.ApiTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
-/** 댓글 모듈의 채팅: 기록용 Peer로 구독자가 새 채팅과 ended를 받는지 확인한다. */
+/** 방의 채팅 구독: 기록용 구독자가 새 채팅과 ended를 받는지, 방이 어떤 경로로 닫히든 함께 닫히는지 확인한다. */
 class LiveChatTest extends ApiTestSupport {
 
     @Autowired
     Comments comments;
+
+    @Autowired
+    LiveChat chat;
 
     @Autowired
     LiveBroadcasting live;
@@ -36,7 +36,7 @@ class LiveChatTest extends ApiTestSupport {
     void 구독자는_방송_중에_쓴_채팅을_받는다() {
         long id = 방송을_시작한다();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
 
         CommentView written = comments.write(id, owner().userId(), "안녕");
 
@@ -49,8 +49,8 @@ class LiveChatTest extends ApiTestSupport {
     void 구독을_끊은_연결은_더_받지_않는다() {
         long id = 방송을_시작한다();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
-        comments.unsubscribe(subscriber);
+        chat.subscribe(id, subscriber);
+        chat.unsubscribe(subscriber);
 
         comments.write(id, owner().userId(), "안녕");
 
@@ -62,7 +62,7 @@ class LiveChatTest extends ApiTestSupport {
         long id = 방송을_시작한다();
         long other = live.start(new StartLiveCommand("다른 방송", null), owner().userId()).broadcastId();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
 
         comments.write(other, owner().userId(), "딴 방송");
 
@@ -73,7 +73,7 @@ class LiveChatTest extends ApiTestSupport {
     void 녹화방송_댓글은_구독자에게_가지_않는다() {
         long recording = 녹화방송을_올린다();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(recording, subscriber);
+        chat.subscribe(recording, subscriber);
 
         comments.write(recording, owner().userId(), "댓글");
 
@@ -84,7 +84,7 @@ class LiveChatTest extends ApiTestSupport {
     void 방송이_어떤_경로로든_끝나면_구독자는_ended를_받고_연결이_닫힌다() {
         long id = 방송을_시작한다();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
 
         live.endByOwner(id, owner().userId());
 
@@ -98,7 +98,7 @@ class LiveChatTest extends ApiTestSupport {
         RecordingPeer broadcaster = new RecordingPeer();
         live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(started.broadcastId(), subscriber);
+        chat.subscribe(started.broadcastId(), subscriber);
 
         live.relay(broadcaster, SignalMessage.of(SignalMessage.END));
 
@@ -110,7 +110,7 @@ class LiveChatTest extends ApiTestSupport {
     void 하트비트가_끊겨_방송이_정리돼도_구독자는_ended를_받는다() {
         long id = 방송을_시작한다();
         RecordingSubscriber subscriber = new RecordingSubscriber();
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
 
         live.expireSilentBroadcasters(clock.instant().plus(LiveBroadcasting.SILENCE_LIMIT).plusSeconds(1));
 
@@ -124,7 +124,7 @@ class LiveChatTest extends ApiTestSupport {
         live.endByOwner(id, owner().userId());
         RecordingSubscriber late = new RecordingSubscriber();
 
-        comments.subscribe(id, late);
+        chat.subscribe(id, late);
 
         assertThat(late.types()).containsExactly("ended");
         assertThat(late.closed).isTrue();
@@ -133,33 +133,15 @@ class LiveChatTest extends ApiTestSupport {
     @Test
     void 없는_방송이나_녹화방송을_구독하면_아무것도_받지_않고_닫힌다() {
         RecordingSubscriber missing = new RecordingSubscriber();
-        comments.subscribe(999_999, missing);
+        chat.subscribe(999_999, missing);
         long recording = 녹화방송을_올린다();
         RecordingSubscriber onRecording = new RecordingSubscriber();
-        comments.subscribe(recording, onRecording);
+        chat.subscribe(recording, onRecording);
 
         assertThat(missing.received).isEmpty();
         assertThat(missing.closed).isTrue();
         assertThat(onRecording.received).isEmpty();
         assertThat(onRecording.closed).isTrue();
-    }
-
-    @Test
-    void 종료된_라이브방송에_쓰면_거절하고_구독자에게도_가지_않는다() {
-        long id = 방송을_시작한다();
-        live.endByOwner(id, owner().userId());
-
-        assertThatThrownBy(() -> comments.write(id, owner().userId(), "늦은 글"))
-                .isInstanceOf(ChatClosedException.class);
-    }
-
-    @Test
-    void 라이브방송의_채팅은_지울_수_없다() {
-        long id = 방송을_시작한다();
-        long commentId = comments.write(id, owner().userId(), "지울 수 없다").id();
-
-        assertThatThrownBy(() -> comments.delete(id, commentId, owner().userId()))
-                .isInstanceOf(ChatNotDeletableException.class);
     }
 
     private long 녹화방송을_올린다() {

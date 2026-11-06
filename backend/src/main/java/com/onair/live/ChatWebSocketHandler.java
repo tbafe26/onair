@@ -1,6 +1,5 @@
 package com.onair.live;
 
-import com.onair.comment.Comments;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -17,11 +16,11 @@ class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final String SUBSCRIBER_ATTRIBUTE = "subscriber";
 
-    private final Comments comments;
+    private final LiveChat chat;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    ChatWebSocketHandler(Comments comments) {
-        this.comments = comments;
+    ChatWebSocketHandler(LiveChat chat) {
+        this.chat = chat;
     }
 
     @Override
@@ -33,7 +32,7 @@ class ChatWebSocketHandler extends TextWebSocketHandler {
             subscriber.close();
             return;
         }
-        comments.subscribe(id, subscriber);
+        chat.subscribe(id, subscriber);
     }
 
     @Override
@@ -44,7 +43,7 @@ class ChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         if (session.getAttributes().get(SUBSCRIBER_ATTRIBUTE) instanceof ChatSubscriber subscriber) {
-            comments.unsubscribe(subscriber);
+            chat.unsubscribe(subscriber);
         }
     }
 

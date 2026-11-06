@@ -10,7 +10,6 @@ import com.onair.broadcast.OwnedBroadcasts;
 import com.onair.broadcast.RegistrationRules;
 import com.onair.broadcast.StartLiveCommand;
 import com.onair.broadcast.StreamKeys;
-import com.onair.comment.Comments;
 import com.onair.media.MediaStorage;
 import com.onair.media.MultipartInputs;
 import java.time.Clock;
@@ -46,7 +45,7 @@ public class LiveBroadcasting {
     private final TransactionTemplate transaction;
     private final Clock clock;
     private final LiveRooms rooms;
-    private final Comments comments;
+    private final LiveChat chat;
 
     /** 마지막 생존 신호에서 이 시간이 지나도록 연락이 없으면 송출자가 사라진 것으로 본다. */
     public static final Duration SILENCE_LIMIT = Duration.ofSeconds(30);
@@ -61,10 +60,10 @@ public class LiveBroadcasting {
             AppUserRepository users,
             PlatformTransactionManager transactionManager,
             Clock clock,
-            Comments comments,
+            LiveChat chat,
             @Value("${app.live.max-viewers:5}") int maxViewers) {
         this.clock = clock;
-        this.comments = comments;
+        this.chat = chat;
         this.rooms = new LiveRooms(maxViewers);
         this.repository = repository;
         this.storage = storage;
@@ -301,6 +300,6 @@ public class LiveBroadcasting {
             viewer.send(SignalMessage.of(SignalMessage.ENDED));
             viewer.close();
         }
-        comments.endChat(broadcastId);
+        chat.close(broadcastId);
     }
 }

@@ -1,6 +1,5 @@
 package com.onair.live;
 
-import com.onair.comment.CommentView;
 import java.util.Map;
 
 /**
@@ -16,7 +15,7 @@ public record ChatMessage(String type, Map<String, Object> fields) {
         fields = Map.copyOf(fields);
     }
 
-    public static ChatMessage comment(CommentView comment) {
+    public static ChatMessage comment(Object comment) {
         return new ChatMessage(COMMENT, Map.of("comment", comment));
     }
 
