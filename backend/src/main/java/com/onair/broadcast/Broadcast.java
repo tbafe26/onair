@@ -1,14 +1,14 @@
 package com.onair.broadcast;
 
+import com.onair.auth.AppUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorColumn;
 import jakarta.persistence.DiscriminatorType;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import com.onair.auth.AppUser;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.Inheritance;
 import jakarta.persistence.InheritanceType;
 import jakarta.persistence.JoinColumn;
@@ -63,7 +63,7 @@ public abstract class Broadcast {
     }
 
     /** 소유자가 이 사용자인지. 소유자가 없는 방송(옛 데이터)은 누구의 것도 아니다. */
-    boolean isOwnedBy(long userId) {
+    public boolean isOwnedBy(long userId) {
         return owner != null && owner.getId() == userId;
     }
 
@@ -81,22 +81,22 @@ public abstract class Broadcast {
     abstract String thumbnailKey();
 
     /** 송출 중인지. 녹화방송은 송출하지 않으므로 항상 false다. */
-    abstract boolean isOnAir();
+    public abstract boolean isOnAir();
 
     /** 지금 지울 수 있는지. 방송 중인 라이브방송만 지울 수 없다. */
     abstract boolean canDeleteNow();
 
     /** 지금 댓글을 받는지. 라이브방송은 방송 중일 때만 받는다. */
-    abstract boolean acceptsCommentsNow();
+    public abstract boolean acceptsCommentsNow();
 
     /** 댓글을 지울 수 있는지. 라이브방송의 채팅은 지울 수 없다. */
-    abstract boolean commentsDeletable();
+    public abstract boolean commentsDeletable();
 
     /** 댓글이 실시간 채팅인지. 채팅은 구독자에게 보내고 구독을 받는다. */
-    abstract boolean isChat();
+    public abstract boolean isChat();
 
     /** 소유자가 송출을 종료할 수 있는 방송인지. */
-    abstract boolean canEndStream();
+    public abstract boolean canEndStream();
 
     /** 방송을 지울 때 함께 지울 저장소 파일 키. */
     abstract List<String> ownedFileKeys();

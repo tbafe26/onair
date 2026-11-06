@@ -7,13 +7,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.onair.support.ApiTestSupport;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
 /** 목록의 커서 방식 이어 불러오기: GET /api/broadcasts?before={id}&size={n}. */
-class BroadcastPagingApiTest extends ApiTestSupport {
+public class BroadcastPagingApiTest extends ApiTestSupport {
 
     static final byte[] MP4_BYTES = {
             0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0, 1, 2, 3, 4, 5, 6, 7, 8};

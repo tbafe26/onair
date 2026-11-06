@@ -3,9 +3,9 @@ package com.onair.broadcast;
 import com.onair.auth.AppUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorValue;
+import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Entity;
 import java.time.Instant;
 import java.util.List;
 
@@ -31,7 +31,7 @@ public class LiveBroadcast extends Broadcast {
     protected LiveBroadcast() {
     }
 
-    LiveBroadcast(String title, String streamKeyHash, String thumbnailKey, Instant startedAt, AppUser owner) {
+    public LiveBroadcast(String title, String streamKeyHash, String thumbnailKey, Instant startedAt, AppUser owner) {
         super(title, startedAt, owner);
         this.status = LiveStatus.ON_AIR;
         this.streamKeyHash = streamKeyHash;
@@ -43,27 +43,27 @@ public class LiveBroadcast extends Broadcast {
         return BroadcastKind.LIVE;
     }
 
-    LiveStatus status() {
+    public LiveStatus status() {
         return status;
     }
 
     @Override
-    boolean isOnAir() {
+    public boolean isOnAir() {
         return status == LiveStatus.ON_AIR;
     }
 
     /** 종료 시각. 방송 중이면 null이다. */
-    Instant endedAt() {
+    public Instant endedAt() {
         return endedAt;
     }
 
     /** 송출 키가 이 방송의 것인지 시간 차가 드러나지 않게 비교한다. */
-    boolean matchesStreamKey(String streamKey) {
+    public boolean matchesStreamKey(String streamKey) {
         return StreamKeys.matches(streamKey, streamKeyHash);
     }
 
     /** 방송 중이면 종료로 바꾸고 true를 돌려준다. 이미 종료됐으면 아무것도 바꾸지 않고 false다. */
-    boolean end(Instant now) {
+    public boolean end(Instant now) {
         if (status == LiveStatus.ENDED) {
             return false;
         }
@@ -78,27 +78,27 @@ public class LiveBroadcast extends Broadcast {
     }
 
     @Override
-    boolean canDeleteNow() {
+    public boolean canDeleteNow() {
         return !isOnAir();
     }
 
     @Override
-    boolean acceptsCommentsNow() {
+    public boolean acceptsCommentsNow() {
         return isOnAir();
     }
 
     @Override
-    boolean commentsDeletable() {
+    public boolean commentsDeletable() {
         return false;
     }
 
     @Override
-    boolean isChat() {
+    public boolean isChat() {
         return true;
     }
 
     @Override
-    boolean canEndStream() {
+    public boolean canEndStream() {
         return true;
     }
 

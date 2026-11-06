@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.onair.auth.AuthClient;
+import com.onair.media.MediaStorage;
+import com.onair.support.ApiTestSupport;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,8 +21,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * 배포된 버전이 만든 스키마 위에서 지금의 코드를 운영 설정(ddl-auto=update)으로 띄워, 모든 방송 종류를 저장하고 읽을 수 있는지 본다.

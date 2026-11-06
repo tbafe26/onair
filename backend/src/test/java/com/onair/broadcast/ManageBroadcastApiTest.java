@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.onair.auth.AuthClient;
 import com.onair.auth.Csrf;
+import com.onair.support.ApiTestSupport;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;

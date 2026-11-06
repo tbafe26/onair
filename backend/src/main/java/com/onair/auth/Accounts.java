@@ -1,7 +1,7 @@
 package com.onair.auth;
 
-import com.onair.broadcast.FieldViolation;
-import com.onair.broadcast.InvalidRequestException;
+import com.onair.api.FieldViolation;
+import com.onair.api.InvalidRequestException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;

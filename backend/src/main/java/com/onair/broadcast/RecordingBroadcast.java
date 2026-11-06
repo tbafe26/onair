@@ -49,7 +49,7 @@ public class RecordingBroadcast extends Broadcast {
         return video.getDurationSeconds();
     }
 
-    boolean hasThumbnail() {
+    public boolean hasThumbnail() {
         return video.getThumbnailKey() != null;
     }
 
@@ -59,32 +59,32 @@ public class RecordingBroadcast extends Broadcast {
     }
 
     @Override
-    boolean isOnAir() {
+    public boolean isOnAir() {
         return false;
     }
 
     @Override
-    boolean canDeleteNow() {
+    public boolean canDeleteNow() {
         return true;
     }
 
     @Override
-    boolean acceptsCommentsNow() {
+    public boolean acceptsCommentsNow() {
         return true;
     }
 
     @Override
-    boolean commentsDeletable() {
+    public boolean commentsDeletable() {
         return true;
     }
 
     @Override
-    boolean isChat() {
+    public boolean isChat() {
         return false;
     }
 
     @Override
-    boolean canEndStream() {
+    public boolean canEndStream() {
         return false;
     }
 

@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /** 방송 저장소. 목록과 상세는 방송 상위 타입으로 읽고, 종류별 정보는 응답 변환에서 구분한다. */
-interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
+public interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
 
     /** id가 before보다 작은 방송을 id 역순(최신 등록순)으로 돌려준다. 페이지 크기는 Pageable이 정한다. */
     @Query("select b from Broadcast b where b.id < :before order by b.id desc")

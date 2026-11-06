@@ -1,7 +1,15 @@
 package com.onair.broadcast;
 
+import com.onair.api.CursorPaging;
+import com.onair.api.FieldViolation;
+import com.onair.api.InvalidRequestException;
+import com.onair.api.Requester;
 import com.onair.auth.AppUser;
 import com.onair.auth.AppUserRepository;
+import com.onair.comment.Comments;
+import com.onair.media.MediaFileMissingException;
+import com.onair.media.MediaStorage;
+import com.onair.media.MultipartInputs;
 import java.time.Clock;
 import java.util.List;
 import java.util.function.Function;
@@ -16,7 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** 방송 등록과 조회의 흐름만 맡는다. 등록 규칙은 RegistrationRules, 파일 보관은 MediaStorage가 맡는다. */
 @Service
-class BroadcastService {
+public class BroadcastService {
 
     private static final Logger log = LoggerFactory.getLogger(BroadcastService.class);
 
@@ -44,7 +52,7 @@ class BroadcastService {
      * 등록 흐름: 로그인 확인, 입력 검증, 파일 저장, DB 기록, 확정 순이다. 중간에 실패하면 저장한 파일이 모두 지워진다.
      * userId는 요청한 사용자이고 로그인하지 않았으면 null이다. 이 사용자가 방송의 소유자가 된다.
      */
-    Broadcast register(RegistrationForm form, Long userId) {
+    public Broadcast register(RegistrationForm form, Long userId) {
         AppUser owner = Requester.load(userId, users);
         RegisterRecordingCommand command = rules.validate(form);
 
