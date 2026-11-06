@@ -33,25 +33,25 @@ class ChatContractTest extends ApiTestSupport {
     @Test
     void 서버가_보내는_채팅_메시지의_종류와_필드는_계약과_같다() {
         long id = live.start(new StartLiveCommand("계약", null), owner().userId()).broadcastId();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
         comments.write(id, owner().userId(), "계약 확인");
         live.endByOwner(id, owner().userId());
 
         JsonNode messages = contract.get("messages");
         assertThat(subscriber.types()).containsExactlyInAnyOrderElementsOf(messages.propertyNames());
-        for (SignalMessage message : subscriber.received) {
+        for (ChatMessage message : subscriber.received) {
             assertThat(message.fields().keySet()).as(message.type() + "의 필드")
                     .containsExactlyInAnyOrderElementsOf(이름들(messages.get(message.type()).get("server->client")));
         }
-        assertThat(Comments.CHAT_COMMENT).isEqualTo("comment");
-        assertThat(subscriber.received.getLast().type()).isEqualTo(SignalMessage.ENDED);
+        assertThat(ChatMessage.COMMENT).isEqualTo("comment");
+        assertThat(subscriber.received.getLast().type()).isEqualTo(ChatMessage.ENDED);
     }
 
     @Test
     void 채팅_메시지에_실린_댓글의_JSON_필드는_계약과_같다() {
         long id = live.start(new StartLiveCommand("계약", null), owner().userId()).broadcastId();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
         comments.write(id, owner().userId(), "계약 확인");
 

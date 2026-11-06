@@ -27,7 +27,7 @@ class LiveChatTest extends ApiTestSupport {
     @Test
     void 구독자는_방송_중에_쓴_채팅을_받는다() {
         long id = 방송을_시작한다();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
 
         CommentView written = comments.write(id, owner().userId(), "안녕");
@@ -40,7 +40,7 @@ class LiveChatTest extends ApiTestSupport {
     @Test
     void 구독을_끊은_연결은_더_받지_않는다() {
         long id = 방송을_시작한다();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
         comments.unsubscribe(subscriber);
 
@@ -53,7 +53,7 @@ class LiveChatTest extends ApiTestSupport {
     void 다른_방송의_채팅은_받지_않는다() {
         long id = 방송을_시작한다();
         long other = live.start(new StartLiveCommand("다른 방송", null), owner().userId()).broadcastId();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
 
         comments.write(other, owner().userId(), "딴 방송");
@@ -64,7 +64,7 @@ class LiveChatTest extends ApiTestSupport {
     @Test
     void 녹화방송_댓글은_구독자에게_가지_않는다() {
         long recording = 녹화방송을_올린다();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(recording, subscriber);
 
         comments.write(recording, owner().userId(), "댓글");
@@ -75,7 +75,7 @@ class LiveChatTest extends ApiTestSupport {
     @Test
     void 방송이_어떤_경로로든_끝나면_구독자는_ended를_받고_연결이_닫힌다() {
         long id = 방송을_시작한다();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
 
         live.endByOwner(id, owner().userId());
@@ -89,7 +89,7 @@ class LiveChatTest extends ApiTestSupport {
         var started = live.start(new StartLiveCommand("채팅 방송", null), owner().userId());
         RecordingPeer broadcaster = new RecordingPeer();
         live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(started.broadcastId(), subscriber);
 
         live.relay(broadcaster, SignalMessage.of(SignalMessage.END));
@@ -101,7 +101,7 @@ class LiveChatTest extends ApiTestSupport {
     @Test
     void 하트비트가_끊겨_방송이_정리돼도_구독자는_ended를_받는다() {
         long id = 방송을_시작한다();
-        RecordingPeer subscriber = new RecordingPeer();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
         comments.subscribe(id, subscriber);
 
         live.expireSilentBroadcasters(clock.instant().plus(LiveBroadcasting.SILENCE_LIMIT).plusSeconds(1));
@@ -114,7 +114,7 @@ class LiveChatTest extends ApiTestSupport {
     void 종료된_방송을_구독하면_바로_ended를_받고_닫힌다() {
         long id = 방송을_시작한다();
         live.endByOwner(id, owner().userId());
-        RecordingPeer late = new RecordingPeer();
+        RecordingSubscriber late = new RecordingSubscriber();
 
         comments.subscribe(id, late);
 
@@ -124,10 +124,10 @@ class LiveChatTest extends ApiTestSupport {
 
     @Test
     void 없는_방송이나_녹화방송을_구독하면_아무것도_받지_않고_닫힌다() {
-        RecordingPeer missing = new RecordingPeer();
+        RecordingSubscriber missing = new RecordingSubscriber();
         comments.subscribe(999_999, missing);
         long recording = 녹화방송을_올린다();
-        RecordingPeer onRecording = new RecordingPeer();
+        RecordingSubscriber onRecording = new RecordingSubscriber();
         comments.subscribe(recording, onRecording);
 
         assertThat(missing.received).isEmpty();

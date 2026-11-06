@@ -14,7 +14,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 class ChatWebSocketHandler extends TextWebSocketHandler {
 
-    private static final String PEER_ATTRIBUTE = "peer";
+    private static final String SUBSCRIBER_ATTRIBUTE = "subscriber";
 
     private final Comments comments;
     private final JsonMapper json = JsonMapper.builder().build();
@@ -25,14 +25,14 @@ class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        Peer peer = new WebSocketPeer(session, json);
-        session.getAttributes().put(PEER_ATTRIBUTE, peer);
+        ChatSubscriber subscriber = new WebSocketPeer(session, json);
+        session.getAttributes().put(SUBSCRIBER_ATTRIBUTE, subscriber);
         Long id = broadcastId(session);
         if (id == null) {
-            peer.close();
+            subscriber.close();
             return;
         }
-        comments.subscribe(id, peer);
+        comments.subscribe(id, subscriber);
     }
 
     @Override
@@ -42,8 +42,8 @@ class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        if (session.getAttributes().get(PEER_ATTRIBUTE) instanceof Peer peer) {
-            comments.unsubscribe(peer);
+        if (session.getAttributes().get(SUBSCRIBER_ATTRIBUTE) instanceof ChatSubscriber subscriber) {
+            comments.unsubscribe(subscriber);
         }
     }
 
