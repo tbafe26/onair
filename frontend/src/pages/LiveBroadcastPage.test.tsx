@@ -6,10 +6,8 @@ import type { ThumbnailImageDeps } from '../lib/thumbnail-image'
 import {
   StartRejectedError,
   type BroadcasterDeps,
-  type SignalingChannel,
-  type SignalingHandlers,
-  type SignalMessage,
 } from '../live/broadcaster'
+import type { SignalingChannel, SignalingHandlers, SignalMessage } from '../live/signaling-protocol'
 import { createFakePeer, type FakePeer } from '../test/fakePeer'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'

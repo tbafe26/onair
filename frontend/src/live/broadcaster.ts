@@ -1,6 +1,19 @@
 // 송출 모듈. React와 무관하고, 카메라 열기·방송 시작·시그널링 연결은 바깥에서 받는다(deps).
 // 실제로는 브라우저 API(browser-deps.ts)를, 테스트에서는 가짜를 넣는다.
 import type { PeerConnectionLike } from './peer'
+import {
+  MessageType,
+  START_FAILURE_MESSAGE,
+  broadcasterRejectionMessage,
+  candidateTo,
+  endBroadcast,
+  heartbeat,
+  joinBroadcaster,
+  offerTo,
+  parseBroadcasterInbound,
+  type SignalingChannel,
+  type SignalingHandlers,
+} from './signaling-protocol'
 
 export type CameraUnavailableReason = 'denied' | 'notFound' | 'insecure'
 
@@ -18,22 +31,6 @@ export type BroadcasterState =
   | { phase: 'starting'; stream: MediaStream }
   | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number; viewerCount: number; maxViewers: number | null }
   | { phase: 'ended'; broadcastId: number }
-
-export interface SignalMessage {
-  type: string
-  [field: string]: unknown
-}
-
-export interface SignalingChannel {
-  send(message: SignalMessage): void
-  close(): void
-}
-
-export interface SignalingHandlers {
-  onMessage(message: SignalMessage): void
-  /** 서버가 닫았거나 연결이 끊겼다. close()를 직접 부른 경우에는 호출하지 않는다. */
-  onClose(): void
-}
 
 export interface WakeLockHandle {
   release(): Promise<void>
@@ -86,7 +83,6 @@ export interface LiveBroadcaster {
 const END_CONFIRM_TIMEOUT_MS = 5000
 const HEARTBEAT_INTERVAL_MS = 10_000
 const SWITCH_FAILURE_MESSAGE = '카메라를 바꾸지 못했습니다. 이전 카메라로 계속합니다.'
-export const START_FAILURE_MESSAGE = '송출을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'
 const NO_FIELD_ERRORS: Readonly<Record<string, string>> = Object.freeze({})
 
 /** 서버가 입력(제목·썸네일)을 거절했다. fieldErrors는 필드 이름별 이유다. */
@@ -186,7 +182,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
 
   /** 송출 중에는 연락이 끊기지 않았음을 서버에 알리고, 화면이 다시 보이면 화면 꺼짐 방지를 다시 요청한다. */
   function startKeepAlive(session: number) {
-    heartbeatTimer = setInterval(() => channel?.send({ type: 'heartbeat' }), HEARTBEAT_INTERVAL_MS)
+    heartbeatTimer = setInterval(() => channel?.send(heartbeat()), HEARTBEAT_INTERVAL_MS)
     // 브라우저는 화면이 가려지면 잠금을 스스로 풀기 때문에 다시 보일 때 새로 요청한다.
     stopWatchingVisible =
       deps.watchVisible?.(() => {
@@ -225,13 +221,13 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     })
   }
 
-  function offerTo(viewerId: string, stream: MediaStream) {
+  function negotiateWith(viewerId: string, stream: MediaStream) {
     const connection = deps.createPeerConnection()
     viewers.set(viewerId, { connection, queue: Promise.resolve() })
     stream.getTracks().forEach((track) => connection.addTrack(track, stream))
     connection.onIceCandidate((candidate) => {
       if (viewers.get(viewerId)?.connection === connection) {
-        channel?.send({ type: 'candidate', to: viewerId, candidate })
+        channel?.send(candidateTo(viewerId, candidate))
       }
     })
     connection.onFailed(() => {
@@ -240,32 +236,26 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     enqueue(viewerId, async () => {
       const offer = await connection.createOffer()
       await connection.setLocalDescription(offer)
-      channel?.send({ type: 'offer', to: viewerId, sdp: offer.sdp })
+      channel?.send(offerTo(viewerId, offer.sdp))
     })
   }
 
-  function handleViewerMessage(message: SignalMessage) {
-    const viewerId = message.type === 'viewer-joined' || message.type === 'viewer-left' ? message.viewerId : message.from
-    if (typeof viewerId !== 'string') return
-    switch (message.type) {
-      case 'viewer-joined':
-        if (current.phase === 'onAir' && !viewers.has(viewerId)) offerTo(viewerId, current.stream)
+  function handleViewerMessage(message: ReturnType<typeof parseBroadcasterInbound>) {
+    switch (message?.type) {
+      case MessageType.ViewerJoined:
+        if (current.phase === 'onAir' && !viewers.has(message.viewerId)) negotiateWith(message.viewerId, current.stream)
         break
-      case 'viewer-left':
-        closeViewer(viewerId)
+      case MessageType.ViewerLeft:
+        closeViewer(message.viewerId)
         break
-      case 'answer': {
-        const sdp = message.sdp
-        if (typeof sdp === 'string') {
-          enqueue(viewerId, (connection) => connection.setRemoteDescription({ type: 'answer', sdp }))
-        }
+      case MessageType.Answer: {
+        const { sdp } = message
+        enqueue(message.viewerId, (connection) => connection.setRemoteDescription({ type: 'answer', sdp }))
         break
       }
-      case 'candidate': {
-        const candidate = message.candidate
-        if (typeof candidate === 'object' && candidate !== null) {
-          enqueue(viewerId, (connection) => connection.addIceCandidate(candidate as RTCIceCandidateInit))
-        }
+      case MessageType.Candidate: {
+        const { candidate } = message
+        enqueue(message.viewerId, (connection) => connection.addIceCandidate(candidate))
         break
       }
     }
@@ -317,21 +307,18 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       pendingJoin = { resolve, reject }
       deps
         .openSignaling(broadcastId, {
-          onMessage(message) {
-            if (message.type === 'joined') {
+          onMessage(raw) {
+            const message = parseBroadcasterInbound(raw)
+            if (message?.type === MessageType.Joined) {
               pendingJoin?.resolve()
               pendingJoin = null
-            } else if (message.type === 'rejected') {
-              pendingJoin?.reject(new Error(START_FAILURE_MESSAGE))
+            } else if (message?.type === MessageType.Rejected) {
+              pendingJoin?.reject(new Error(broadcasterRejectionMessage(message.reason)))
               pendingJoin = null
-            } else if (message.type === 'ended' && current.phase === 'onAir') {
+            } else if (message?.type === MessageType.Ended && current.phase === 'onAir') {
               finish(current.broadcastId)
-            } else if (message.type === 'viewer-count' && current.phase === 'onAir') {
-              const count = message.count
-              const max = message.max
-              if (typeof count === 'number') {
-                set({ ...current, viewerCount: count, maxViewers: typeof max === 'number' ? max : current.maxViewers })
-              }
+            } else if (message?.type === MessageType.ViewerCount && current.phase === 'onAir') {
+              set({ ...current, viewerCount: message.count, maxViewers: message.max ?? current.maxViewers })
             } else {
               handleViewerMessage(message)
             }
@@ -348,7 +335,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         })
         .then((opened) => {
           channel = opened
-          opened.send({ type: 'join-broadcaster', streamKey })
+          opened.send(joinBroadcaster(streamKey))
         })
         .catch((error: unknown) => {
           pendingJoin = null
@@ -444,7 +431,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       })
       const timer = setTimeout(() => finish(broadcastId), END_CONFIRM_TIMEOUT_MS)
       pendingEnd = { promise, resolve, timer }
-      channel.send({ type: 'end' })
+      channel.send(endBroadcast())
       return promise
     },
 

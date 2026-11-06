@@ -1,12 +1,7 @@
 import { decodeFailure, startLiveBroadcast } from '../api/broadcasts'
-import {
-  START_FAILURE_MESSAGE,
-  StartRejectedError,
-  type BroadcasterDeps,
-  type SignalingChannel,
-  type SignalingHandlers,
-} from './broadcaster'
+import { StartRejectedError, type BroadcasterDeps } from './broadcaster'
 import { createBrowserPeerConnection } from './peer'
+import { asSignalMessage, START_FAILURE_MESSAGE, type SignalingChannel, type SignalingHandlers } from './signaling-protocol'
 import type { ViewerDeps } from './viewer'
 
 function signalingUrl(broadcastId: number): string {
@@ -32,10 +27,8 @@ function openSignaling(broadcastId: number, handlers: SignalingHandlers): Promis
     socket.addEventListener('message', (event: MessageEvent) => {
       if (typeof event.data !== 'string') return
       try {
-        const parsed: unknown = JSON.parse(event.data)
-        if (typeof parsed === 'object' && parsed !== null && 'type' in parsed) {
-          handlers.onMessage(parsed as { type: string })
-        }
+        const message = asSignalMessage(JSON.parse(event.data))
+        if (message) handlers.onMessage(message)
       } catch {
         // 알아볼 수 없는 메시지는 무시한다.
       }

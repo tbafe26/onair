@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { SignalingChannel, SignalingHandlers, SignalMessage } from './broadcaster'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SignalingChannel, SignalingHandlers, SignalMessage } from './signaling-protocol'
+import {
+  VIEW_ALREADY_JOINED_MESSAGE,
+  VIEW_FAILURE_MESSAGE,
+  VIEW_NOT_BROADCASTING_MESSAGE,
+  VIEW_NOT_FOUND_MESSAGE,
+} from './signaling-protocol'
 import { createFakePeer, type FakePeer } from '../test/fakePeer'
-import { createLiveViewer, type ViewerDeps } from './viewer'
+import { RETRY_INTERVAL_MS, RETRY_LIMIT_MS, createLiveViewer, type ViewerDeps } from './viewer'
 
 function setup(overrides: Partial<ViewerDeps> = {}) {
   const sent: SignalMessage[] = []
@@ -92,14 +98,14 @@ describe('시청 연결', () => {
     expect(env.close).toHaveBeenCalled()
   })
 
-  it('이미 끝난 방송이라 거절되면 ended, 그 밖의 거절은 failed다', async () => {
+  it('이미 끝난 방송이라 거절되면 ended, 없는 방송이면 failed다', async () => {
     const ended = await joined()
     ended.env.server.send({ type: 'rejected', reason: 'ended' })
     expect(ended.viewer.state()).toEqual({ phase: 'ended' })
 
     const missing = await joined()
     missing.env.server.send({ type: 'rejected', reason: 'not-found' })
-    expect(missing.viewer.state()).toEqual({ phase: 'failed' })
+    expect(missing.viewer.state()).toEqual({ phase: 'failed', message: VIEW_NOT_FOUND_MESSAGE })
   })
 
   it('정원이 차서 거절되면 full이 되고 연결을 정리한다', async () => {
@@ -121,7 +127,7 @@ describe('시청 연결', () => {
 
     viewer.join()
 
-    await vi.waitFor(() => expect(viewer.state()).toEqual({ phase: 'failed' }))
+    await vi.waitFor(() => expect(viewer.state()).toEqual({ phase: 'failed', message: VIEW_FAILURE_MESSAGE }))
   })
 
   it('영상이 오기 전에 연결이 끊기면 failed다', async () => {
@@ -129,7 +135,7 @@ describe('시청 연결', () => {
 
     env.server.closeConnection()
 
-    expect(viewer.state()).toEqual({ phase: 'failed' })
+    expect(viewer.state()).toEqual({ phase: 'failed', message: VIEW_FAILURE_MESSAGE })
   })
 
   it('PeerConnection이 실패하면 failed가 되고 연결을 정리한다', async () => {
@@ -139,7 +145,7 @@ describe('시청 연결', () => {
 
     env.peers[0].emitFailed()
 
-    expect(viewer.state()).toEqual({ phase: 'failed' })
+    expect(viewer.state()).toEqual({ phase: 'failed', message: VIEW_FAILURE_MESSAGE })
     expect(env.peers[0].closed).toBe(true)
   })
 
@@ -159,7 +165,7 @@ describe('시청 연결', () => {
 
     env.server.send({ type: 'offer', sdp: 'bad' })
 
-    await vi.waitFor(() => expect(viewer.state()).toEqual({ phase: 'failed' }))
+    await vi.waitFor(() => expect(viewer.state()).toEqual({ phase: 'failed', message: VIEW_FAILURE_MESSAGE }))
   })
 
   it('화면을 떠나면 시그널링과 PeerConnection을 닫고 이후 메시지는 무시한다', async () => {
@@ -206,5 +212,109 @@ describe('시청 연결', () => {
     unsubscribe()
     viewer.join()
     expect(listener).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('송출이 연결되기 전에 들어온 시청자', () => {
+  afterEach(() => vi.useRealTimers())
+
+  /** 가짜 타이머 아래에서 join하고 join-viewer를 보낸 상태까지 만든다. */
+  async function joinedWithFakeTimers() {
+    vi.useFakeTimers()
+    const env = setup()
+    const viewer = createLiveViewer(env.deps, 7)
+    viewer.join()
+    await vi.advanceTimersByTimeAsync(0)
+    return { env, viewer }
+  }
+
+  it('not-broadcasting이면 연결 중으로 두고 3초 뒤 다시 접속한다', async () => {
+    const { env, viewer } = await joinedWithFakeTimers()
+
+    env.server.send({ type: 'rejected', reason: 'not-broadcasting' })
+
+    expect(viewer.state()).toEqual({ phase: 'connecting' })
+    expect(env.close).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(RETRY_INTERVAL_MS - 1)
+    expect(env.deps.openSignaling).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(env.deps.openSignaling).toHaveBeenCalledTimes(2)
+    expect(env.sent).toEqual([{ type: 'join-viewer' }, { type: 'join-viewer' }])
+  })
+
+  it('다시 접속했을 때 송출이 연결되어 있으면 정상으로 이어진다', async () => {
+    const { env, viewer } = await joinedWithFakeTimers()
+    env.server.send({ type: 'rejected', reason: 'not-broadcasting' })
+    await vi.advanceTimersByTimeAsync(RETRY_INTERVAL_MS)
+
+    env.server.send({ type: 'joined', viewerId: '1' })
+    env.server.send({ type: 'offer', sdp: 'o' })
+    await vi.advanceTimersByTimeAsync(0)
+    env.peers[0].emitTrack(stream)
+
+    expect(viewer.state()).toEqual({ phase: 'playing', stream })
+  })
+
+  it('30초 동안 계속 거절되면 연결 중으로 기다리다가 실패 문구를 보인다', async () => {
+    const { env, viewer } = await joinedWithFakeTimers()
+    const attempts = RETRY_LIMIT_MS / RETRY_INTERVAL_MS
+
+    for (let i = 0; i < attempts; i++) {
+      env.server.send({ type: 'rejected', reason: 'not-broadcasting' })
+      expect(viewer.state()).toEqual({ phase: 'connecting' })
+      await vi.advanceTimersByTimeAsync(RETRY_INTERVAL_MS)
+    }
+    env.server.send({ type: 'rejected', reason: 'not-broadcasting' })
+
+    expect(viewer.state()).toEqual({ phase: 'failed', message: VIEW_NOT_BROADCASTING_MESSAGE })
+    expect(env.deps.openSignaling).toHaveBeenCalledTimes(attempts + 1)
+    await vi.advanceTimersByTimeAsync(RETRY_INTERVAL_MS * 3)
+    expect(env.deps.openSignaling).toHaveBeenCalledTimes(attempts + 1)
+  })
+
+  it('기다리는 동안 화면을 떠나면 다시 접속하지 않는다', async () => {
+    const { env, viewer } = await joinedWithFakeTimers()
+    env.server.send({ type: 'rejected', reason: 'not-broadcasting' })
+
+    viewer.dispose()
+    await vi.advanceTimersByTimeAsync(RETRY_INTERVAL_MS * 2)
+
+    expect(env.deps.openSignaling).toHaveBeenCalledTimes(1)
+  })
+
+  it('주입한 타이머가 있으면 그것으로 다시 접속을 예약한다', async () => {
+    const scheduled: { callback: () => void; delayMs: number }[] = []
+    const cancel = vi.fn()
+    const env = setup({
+      schedule: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs })
+        return cancel
+      },
+    })
+    const viewer = createLiveViewer(env.deps, 7)
+    viewer.join()
+    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+
+    env.server.send({ type: 'rejected', reason: 'not-broadcasting' })
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([RETRY_INTERVAL_MS])
+    scheduled[0].callback()
+
+    await vi.waitFor(() => expect(env.sent).toHaveLength(2))
+    viewer.dispose()
+  })
+})
+
+describe('거절 사유별 문구', () => {
+  it.each([
+    ['not-found', 'failed', VIEW_NOT_FOUND_MESSAGE],
+    ['already-joined', 'failed', VIEW_ALREADY_JOINED_MESSAGE],
+    ['invalid-key', 'failed', VIEW_FAILURE_MESSAGE],
+    ['사유 없음', 'failed', VIEW_FAILURE_MESSAGE],
+  ])('%s는 %s 상태로 해당 문구를 보인다', async (reason, phase, message) => {
+    const { viewer, env } = await joined()
+
+    env.server.send({ type: 'rejected', reason: reason === '사유 없음' ? undefined : reason })
+
+    expect(viewer.state()).toEqual({ phase, message })
   })
 })
