@@ -1,6 +1,7 @@
 package com.onair.donation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.onair.auth.AuthClient;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
 
 /** 후원이 확정되면 그 방송의 채팅 구독자에게 donation 메시지가 한 번만 나가는지 확인한다. */
@@ -91,6 +93,26 @@ class DonationChatApiTest extends DonationApiTestSupport {
         String orderId = 주문을_만든다(viewer.credentials(), id, 5000, "응원");
 
         승인한다(viewer.credentials(), "pk_1", orderId, 5000).andExpect(status().isOk());
+        승인한다(viewer.credentials(), "pk_1", orderId, 5000).andExpect(status().isOk());
+
+        assertThat(후원_메시지(subscriber)).hasSize(1);
+    }
+
+    @Test
+    void 승인_통지로_확정돼도_한_번만_보내고_승인이_겹쳐도_늘지_않는다() throws Exception {
+        int id = 라이브방송을_시작한다();
+        RecordingSubscriber subscriber = new RecordingSubscriber();
+        chat.subscribe(id, subscriber);
+        AuthClient viewer = 시청자();
+        String orderId = 주문을_만든다(viewer.credentials(), id, 5000, "응원");
+        payments.onFind(key -> new PaymentResult.Paid("DONE", orderId, 5000, key));
+
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(post("/api/payments/toss/notifications").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"pk_1\","
+                            + "\"orderId\":\"" + orderId + "\",\"status\":\"DONE\"}}"))
+                    .andExpect(status().isOk());
+        }
         승인한다(viewer.credentials(), "pk_1", orderId, 5000).andExpect(status().isOk());
 
         assertThat(후원_메시지(subscriber)).hasSize(1);

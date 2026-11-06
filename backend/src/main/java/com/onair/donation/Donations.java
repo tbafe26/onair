@@ -30,6 +30,9 @@ public class Donations implements BroadcastDeletionListener {
     static final long MAX_AMOUNT = 500_000;
     static final long AMOUNT_UNIT = 1_000;
     // 결제 서비스로 가는 유일한 문구다. 닉네임이나 메시지를 넣지 않는다.
+    // 사용자가 결제창을 닫았을 때 토스가 failUrl로 넘기는 코드.
+    static final String USER_CANCELED = "PAY_PROCESS_CANCELED";
+    static final int MAX_FAILURE_CODE_LENGTH = 100;
     static final String ORDER_NAME = "온에어 방송 후원";
 
     private final DonationRepository donations;
@@ -116,6 +119,31 @@ public class Donations implements BroadcastDeletionListener {
                 }
             }
         }
+        markConfirmed(donation, paymentKey);
+        // 이긴 쪽과 진 쪽 모두 저장된 확정 결과를 읽어 돌려준다.
+        return decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new), paymentKey);
+    }
+
+    /**
+     * 결제 서비스의 승인 통지를 처리한다. 통지 본문은 믿지 않고 결제 키로 결제를 다시 조회해, 승인과 같은 대조와
+     * 조건부 갱신으로 확정한다. 모르는 주문, 이미 끝난 주문, 조회 실패, 대조 실패는 아무것도 바꾸지 않고 돌아온다.
+     */
+    public void handlePaymentNotification(String paymentKey, String orderId) {
+        Donation donation = donations.findByOrderId(orderId).orElse(null);
+        if (donation == null || donation.getStatus() != DonationStatus.PENDING) {
+            return;
+        }
+        try {
+            if (payments.find(paymentKey) instanceof PaymentResult.Paid paid && matches(paid, donation, paymentKey)) {
+                markConfirmed(donation, paymentKey);
+            }
+        } catch (PaymentGatewayUnavailableException | DonationNotPayableException e) {
+            // 결제 서비스가 다시 통지하거나 사용자가 승인하면 된다.
+        }
+    }
+
+    // 대기 후원을 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
+    private void markConfirmed(Donation donation, String paymentKey) {
         boolean won;
         try {
             won = donations.confirmIfPending(donation.getId(), paymentKey, Instant.now(clock)) == 1;
@@ -123,20 +151,20 @@ public class Donations implements BroadcastDeletionListener {
             // 같은 결제 키가 다른 후원에 이미 쓰였다.
             throw new DonationNotPayableException();
         }
-        // 이긴 쪽과 진 쪽 모두 저장된 확정 결과를 읽어 돌려준다.
-        DonationView view = decided(donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new),
-                paymentKey);
         if (won) {
-            publishConfirmed(donation.getBroadcast().getId(), view);
+            publishConfirmed(donation);
         }
-        return view;
     }
 
     // 조건부 갱신이 이미 커밋된 뒤라서 구독자가 받은 합계를 곧바로 REST로 읽어도 같다. 끝난 방송에는 보내지 않는다.
-    private void publishConfirmed(long broadcastId, DonationView view) {
+    // 승인과 승인 통지가 모두 markConfirmed를 거치므로, 이긴 요청 하나만 여기까지 온다.
+    private void publishConfirmed(Donation pending) {
+        long broadcastId = pending.getBroadcast().getId();
         if (broadcasts.findById(broadcastId).filter(Broadcast::isOnAir).isEmpty()) {
             return;
         }
+        DonationView view = DonationView.of(
+                donations.findByOrderId(pending.getOrderId()).orElseThrow(DonationNotFoundException::new));
         DonationPage.Total total = new DonationPage.Total(donations.confirmedAmountOf(broadcastId),
                 donations.confirmedCountOf(broadcastId));
         chat.publishDonation(broadcastId, DonationChatEvent.of(view, total));
@@ -156,6 +184,25 @@ public class Donations implements BroadcastDeletionListener {
             return DonationView.of(donation);
         }
         throw new DonationNotPayableException();
+    }
+
+    /**
+     * 결제창이 알려 준 실패·취소를 기록한다. 본인 주문(401, 404, 403)이고, 대기일 때만 바꾼다:
+     * 사용자가 결제창을 닫으면 취소, 그 밖의 코드는 실패다. 이미 정해진 주문은 그대로 두고 현재 상태를 돌려준다.
+     */
+    public DonationStatus recordFailure(Long userId, String orderId, String code) {
+        long donorId = Requester.id(userId);
+        Donation donation = donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new);
+        if (donation.getDonor().getId() != donorId) {
+            throw new NotDonorException();
+        }
+        String stored = code.length() > MAX_FAILURE_CODE_LENGTH ? code.substring(0, MAX_FAILURE_CODE_LENGTH) : code;
+        if (USER_CANCELED.equals(code)) {
+            donations.cancelIfPending(donation.getId(), stored);
+        } else {
+            donations.failIfPending(donation.getId(), stored);
+        }
+        return donations.findByOrderId(orderId).orElseThrow(DonationNotFoundException::new).getStatus();
     }
 
     private void fail(Donation donation, String code) {
