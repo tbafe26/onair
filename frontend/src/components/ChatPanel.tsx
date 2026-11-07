@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { Gift } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { MAX_COMMENT_LENGTH, decodeCommentFailure, type Comment } from '../api/comments'
@@ -132,14 +133,15 @@ function ChatList({ state, onRetry }: { state: ChatState; onRetry: () => void })
               <li
                 key={item.key}
                 data-donation=""
-                className="break-words whitespace-pre-wrap rounded-lg border-2 border-primary/50 bg-primary/10 px-3 py-2.5"
+                className="break-words whitespace-pre-wrap rounded-xl bg-primary px-3 py-2.5 text-primary-foreground"
               >
-                <p className="flex items-baseline gap-1.5 text-xs text-sub">
-                  <span className="font-semibold text-foreground">{item.donation.donor.nickname}</span>
-                  <span>후원</span>
+                <p className="flex items-center justify-between gap-2">
+                  <span className="font-bold">{item.donation.donor.nickname}</span>
+                  <span className="shrink-0 rounded-full bg-background px-2.5 py-0.5 text-xs font-extrabold text-foreground">
+                    {item.donation.amount.toLocaleString('ko-KR')}원
+                  </span>
                 </p>
-                <p className="text-2xl font-extrabold text-primary">{item.donation.amount.toLocaleString('ko-KR')}원</p>
-                {item.donation.message && <p className="mt-1 text-foreground">{item.donation.message}</p>}
+                {item.donation.message && <p className="mt-1">{item.donation.message}</p>}
               </li>
             ) : (
               <li key={item.key} className="break-words whitespace-pre-wrap">
@@ -218,7 +220,6 @@ function ChatInput({
           {error}
         </p>
       )}
-      <div className="flex items-end gap-2">
       <textarea
         aria-label="채팅 입력"
         value={content}
@@ -226,15 +227,26 @@ function ChatInput({
         maxLength={MAX_COMMENT_LENGTH}
         disabled={state.phase !== 'open'}
         placeholder="채팅을 입력하세요 (Enter로 보내기, Shift+Enter로 줄바꿈)"
-        className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background p-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+        className="w-full resize-none rounded-lg border border-border bg-background p-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         onChange={(event) => setContent(event.target.value)}
         onKeyDown={handleKeyDown}
       />
-      {onDonate && auth.user.id !== onDonate.ownerId && (
-        <Button type="button" variant="outline" onClick={onDonate.open}>
-          후원
+      <div className="mt-1 flex items-center justify-between gap-2">
+        {onDonate && auth.user.id !== onDonate.ownerId ? (
+          <Button type="button" variant="outline" onClick={onDonate.open}>
+            <Gift aria-hidden className="size-4" />
+            후원하기
+          </Button>
+        ) : (
+          <span />
+        )}
+        <Button
+          type="button"
+          disabled={state.phase !== 'open' || sending || content.trim().length === 0}
+          onClick={() => void submit()}
+        >
+          보내기
         </Button>
-      )}
       </div>
     </div>
   )

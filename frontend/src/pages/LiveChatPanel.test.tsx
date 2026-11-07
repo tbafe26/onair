@@ -105,6 +105,20 @@ it('로그인한 사용자는 Enter로 채팅을 보내고 입력창이 비워�
   await waitFor(() => expect(input).toHaveValue(''))
 })
 
+it('보내기 버튼으로도 채팅을 보내고 빈 입력이면 누를 수 없다', async () => {
+  signedInAs()
+  const { app, panel } = await openPanel()
+  const input = await within(panel).findByRole('textbox', { name: '채팅 입력' })
+  const send = within(panel).getByRole('button', { name: '보내기' })
+  expect(send).toBeDisabled()
+
+  await userEvent.type(input, '안녕하세요')
+  await userEvent.click(send)
+
+  expect(app.fake.chat.send).toHaveBeenCalledWith('안녕하세요')
+  await waitFor(() => expect(input).toHaveValue(''))
+})
+
 it('Shift+Enter는 보내지 않고 줄을 바꾼다', async () => {
   signedInAs()
   const { app, panel } = await openPanel()
@@ -237,8 +251,8 @@ it('후원은 닉네임과 금액과 메시지가 있는 줄로 채팅 사이에
   })
 
   const rows = within(within(panel).getByRole('list', { name: '채팅 목록' })).getAllByRole('listitem')
-  expect(rows.map((row) => row.textContent)).toEqual(['시청자먼저', '후원자A후원5,000원<b>힘내세요</b>', '시청자나중'])
-  expect(within(rows[1]).getByText('5,000원')).toHaveClass('text-2xl')
+  expect(rows.map((row) => row.textContent)).toEqual(['시청자먼저', '후원자A5,000원<b>힘내세요</b>', '시청자나중'])
+  expect(within(rows[1]).getByText('5,000원')).toHaveClass('rounded-full')
   expect(within(rows[1]).getByText('후원자A')).toBeInTheDocument()
   expect(rows[1].querySelector('b')).toBeNull()
   expect(rows[1]).toHaveAttribute('data-donation')

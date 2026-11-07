@@ -11,7 +11,6 @@ export const MAX_DONATION_MESSAGE_LENGTH = 100
 /** 글자 수는 서버처럼 코드 포인트로 센다(이모지는 한 글자). */
 export const donationMessageLength = (text: string) => Array.from(text).length
 export const clipDonationMessage = (text: string) => Array.from(text).slice(0, MAX_DONATION_MESSAGE_LENGTH).join('')
-export const DONATION_AMOUNT_CHOICES = [1_000, 5_000, 10_000, 50_000] as const
 
 export const DONATION_AMOUNT_RULE = '1,000원 이상 500,000원 이하, 1,000원 단위로 입력하세요'
 
