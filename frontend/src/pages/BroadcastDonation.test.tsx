@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
@@ -29,9 +29,20 @@ function stubBroadcast(kind: 'LIVE' | 'RECORDING' = 'LIVE', status: 'ON_AIR' | '
   )
 }
 
+afterEach(() => vi.unstubAllGlobals())
+
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: '후원' }))
+  const chat = await screen.findByRole('region', { name: '채팅' })
+  await user.click(await within(chat).findByRole('button', { name: '후원' }))
   return screen.getByRole('dialog', { name: '후원하기' })
+}
+
+function stubPhoneWidth() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 767px)',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }))
 }
 
 function stubOrder(received: unknown[] = []) {
@@ -200,12 +211,12 @@ it('위젯을 그리지 못하거나 결제창을 열지 못하면 오류를 보
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('결제창을 열지 못했습니다')
 })
 
-it('비로그인은 후원 버튼 대신 로그인 안내와 링크를 본다', async () => {
+it('비로그인은 후원 버튼 없이 채팅 입력 자리의 로그인 안내만 본다', async () => {
   stubBroadcast()
   renderApp('/broadcasts/5')
 
-  expect(await screen.findByText(/로그인 후 후원할 수 있습니다/)).toBeInTheDocument()
-  const guide = (await screen.findByText(/로그인 후 후원할 수 있습니다/)).closest('p')!
+  const chat = await screen.findByRole('region', { name: '채팅' })
+  const guide = (await within(chat).findByText(/로그인 후 채팅에 참여할 수 있습니다/)).closest('p')!
   expect(within(guide).getByRole('link', { name: '로그인' })).toHaveAttribute('href', '/login?next=%2Fbroadcasts%2F5')
   expect(screen.queryByRole('button', { name: '후원' })).not.toBeInTheDocument()
 })
@@ -218,7 +229,6 @@ it('소유자에게는 후원 버튼이 없다', async () => {
 
   await screen.findByRole('heading', { name: '후원 라이브' })
   expect(screen.queryByRole('button', { name: '후원' })).not.toBeInTheDocument()
-  expect(screen.queryByText(/로그인 후 후원/)).not.toBeInTheDocument()
 })
 
 it('종료된 라이브방송에는 후원 버튼도 안내도 없다', async () => {
@@ -253,4 +263,69 @@ it('메시지 글자 수는 이모지를 한 글자로 세고 100자까지만 �
 
   expect(Array.from((field as HTMLTextAreaElement).value)).toHaveLength(100)
   expect(within(dialog).getByText('100/100자')).toBeInTheDocument()
+})
+
+it('후원 버튼은 채팅 입력창 옆에 있고 영상 아래 방송 정보에는 없다', async () => {
+  signedInAs('시청자닉', 'viewer01')
+  stubBroadcast()
+  renderApp('/broadcasts/5')
+
+  const chat = await screen.findByRole('region', { name: '채팅' })
+  const button = await within(chat).findByRole('button', { name: '후원' })
+  expect(button.parentElement).toContainElement(within(chat).getByLabelText('채팅 입력'))
+  expect(screen.getAllByRole('button', { name: '후원' })).toHaveLength(1)
+})
+
+it('후원 패널은 채팅 패널 위에 열리고 첫 입력으로 초점이 가며 닫기와 Esc로 닫힌다', async () => {
+  signedInAs('시청자닉', 'viewer01')
+  stubBroadcast()
+  const user = userEvent.setup()
+  renderApp('/broadcasts/5')
+
+  const dialog = await openDialog(user)
+  const chat = screen.getByRole('region', { name: '채팅' })
+  expect(chat).toContainElement(dialog)
+  expect(dialog).toHaveAttribute('aria-modal', 'false')
+  expect(within(dialog).getByLabelText('금액(원)')).toHaveFocus()
+
+  await user.click(within(dialog).getByRole('button', { name: '닫기' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  await openDialog(user)
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('휴대폰 폭에서는 후원 패널이 아래에서 올라오는 시트로 열린다', async () => {
+  stubPhoneWidth()
+  signedInAs('시청자닉', 'viewer01')
+  stubBroadcast()
+  const user = userEvent.setup()
+  renderApp('/broadcasts/5')
+
+  const dialog = await openDialog(user)
+  expect(dialog).toHaveAttribute('aria-modal', 'true')
+  expect(dialog).toHaveAttribute('data-sheet')
+  expect(within(dialog).getByLabelText('금액(원)')).toHaveFocus()
+
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('결제위젯 단계에서도 위젯 영역과 안내가 패널 안에 있고 패널 본문이 스크롤된다', async () => {
+  signedInAs('시청자닉', 'viewer01')
+  stubBroadcast()
+  stubOrder()
+  const user = userEvent.setup()
+  const app = renderApp('/broadcasts/5')
+
+  const dialog = await openDialog(user)
+  await user.type(within(dialog).getByLabelText('금액(원)'), '5000')
+  await user.click(within(dialog).getByRole('button', { name: '다음' }))
+  await waitFor(() => expect(app.payment.render).toHaveBeenCalled())
+
+  const notice = within(dialog).getByText(/테스트 결제입니다/)
+  expect(dialog.querySelector('#donation-payment-methods')).not.toBeNull()
+  expect(notice.closest('[data-panel-body]')).toBe(dialog.querySelector('#donation-payment-methods')!.closest('[data-panel-body]'))
+  expect(dialog.querySelector('[data-panel-body]')).toHaveClass('overflow-y-auto')
 })
