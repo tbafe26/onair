@@ -1,338 +1,121 @@
 # 온에어
 
-녹화한 영상을 올려 재생하고, 휴대폰 카메라로 라이브 송출해 다른 화면에서 시청하는 방송 서비스입니다. 로그인한 사용자가 자기 방송을 관리하고, 방송마다 댓글(라이브방송에서는 실시간 채팅)을 남기며, 방송 중인 라이브방송에는 토스페이먼츠 테스트 결제로 후원합니다.
+[![CI](https://github.com/tbafe26/onair/actions/workflows/ci.yml/badge.svg)](https://github.com/tbafe26/onair/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/tbafe26/onair)](https://github.com/tbafe26/onair/releases/latest)
 
-- 1단계: 녹화방송 등록·시청
-- 2단계: 휴대폰 라이브 송출·시청
-- 3단계: 회원가입·로그인, 방송 소유자 권한, 댓글·채팅
-- 4단계: 라이브방송 후원(토스페이먼츠 테스트 결제), 후원 내역·합계
+녹화방송 · 휴대폰 라이브 송출 · 실시간 채팅 · 후원이 되는 방송 서비스입니다.
 
-버전별 변경 내용은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
+<p align="center">
+  <img src="docs/images/live-watch.png" alt="라이브방송 시청 화면: 송출 영상, 후원 합계와 내역, 채팅과 후원 상자" width="100%">
+</p>
+
+| 방송 목록 | 후원 패널 | 결제 |
+| --- | --- | --- |
+| <img src="docs/images/broadcast-list.png" alt="녹화방송 목록" width="100%"> | <img src="docs/images/donation-panel.png" alt="채팅 위에 열린 후원 패널" width="100%"> | <img src="docs/images/donation-payment.png" alt="화면 가운데 모달의 테스트 결제위젯" width="100%"> |
+
+> 화면의 채널·방송·채팅은 모두 데모용 더미 데이터이고, 결제는 토스페이먼츠 테스트 모드입니다.
+
+## 주요 기능
+
+- **방송**: 영상을 올려 녹화방송으로 재생하고, 휴대폰 카메라로 라이브 송출해 다른 기기에서 시청합니다.
+- **사용자와 권한**: 가입·로그인하면 내가 올리거나 송출한 방송을 직접 관리(제목 수정, 삭제, 송출 종료)합니다.
+- **댓글과 채팅**: 녹화방송에는 댓글을 남기고, 라이브방송에서는 실시간으로 채팅합니다.
+- **후원**: 방송 중인 라이브방송에 금액과 메시지를 골라 테스트 결제로 후원하면, 채팅에 바로 나타나고 방송별 내역과 합계에 쌓입니다.
+
+## 기술 스택
+
+| 영역 | 기술 |
+| --- | --- |
+| 백엔드 | ![Java](https://img.shields.io/badge/Java_25-000000?logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot_4-6DB33F?logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring_Security-6DB33F?logo=springsecurity&logoColor=white) ![H2](https://img.shields.io/badge/H2-09476B?logo=h2database&logoColor=white) ![Gradle](https://img.shields.io/badge/Gradle-02303A?logo=gradle&logoColor=white) |
+| 프런트엔드 | ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white) ![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white) |
+| 실시간 | ![WebRTC](https://img.shields.io/badge/WebRTC-333333?logo=webrtc&logoColor=white) ![WebSocket](https://img.shields.io/badge/WebSocket-010101?logoColor=white) |
+| 결제 | ![Toss Payments](https://img.shields.io/badge/토스페이먼츠_결제위젯-3182F6?logoColor=white) |
+| 테스트·CI | ![JUnit](https://img.shields.io/badge/JUnit_5-25A162?logo=junit5&logoColor=white) ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2F4F4F?logo=github&logoColor=white) ![gitleaks](https://img.shields.io/badge/gitleaks-CC2936?logoColor=white) |
+
+## 구성
+
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="시청자·송출자 → 웹 화면(React) → API 서버(Spring Boot) → H2·영상 파일, 토스페이먼츠 결제위젯·승인 API·승인 통지" width="100%">
+</p>
+
+| 구성 | 역할 |
+| --- | --- |
+| 웹 화면 | React SPA. 개발 서버가 `/api`를 백엔드로 넘겨 같은 출처로 동작합니다(CORS 없음). |
+| REST API | 방송·댓글·후원 API. 로그인은 서버 세션 쿠키, 상태를 바꾸는 요청은 CSRF 토큰으로 보호합니다. |
+| 시그널링 WebSocket | 송출자와 시청자의 WebRTC 연결 신호를 중계하고, 송출자의 생존 신호로 끊긴 방송을 정리합니다. |
+| 채팅 WebSocket | 저장된 채팅과 확정된 후원을 방송 중인 화면에 실시간으로 보냅니다(쓰기는 REST). |
+| 영상 | 라이브 영상은 송출자와 시청자가 WebRTC로 직접 주고받고, 서버는 영상을 거치지 않습니다. |
+| 결제 | 브라우저는 토스 결제위젯으로 결제하고, 서버가 토스 승인 API로 확정합니다. 승인 통지(웹훅)도 받습니다. |
+
+## 기술적 고민과 해결
+
+### 1. 결제 확정과 중복 방지
+
+- **상황**: 결제창이 "성공"으로 돌아와도 그 값은 화면이 보낸 것이라 믿을 수 없고, 같은 결제의 승인 요청이나 승인 통지가 여러 번·동시에 들어올 수 있었습니다.
+- **과제**: 실제로 승인된 결제만, 정해진 금액과 받는 사람으로, 정확히 한 번 적립해야 했습니다.
+- **행동**: 결제 전에 서버가 금액과 받는 사람(방송 소유자)을 정해 대기 후원을 만들고, 승인 때 저장값을 대조한 뒤 토스 승인 API를 호출해 응답의 상태·금액·주문 번호까지 다시 확인했습니다. 확정은 "아직 확정되지 않았을 때만 바꾸는" 조건부 갱신으로 하고, 주문 번호와 결제 키에 unique 제약을 걸었습니다. 승인 통지는 본문을 믿지 않고 토스에 다시 조회해 같은 경로를 타게 했습니다. 코드 리뷰에서 "결제는 됐는데 그사이 취소 기록이 먼저 들어가 후원이 사라지는" 경쟁 상태를 찾아, 결제가 확인되면 확정하도록 고쳤습니다.
+- **결과**: 같은 승인을 반복·동시에 보내거나 승인 통지가 겹쳐도 후원은 한 건만 확정되고, 이를 동시성 테스트와 실제 테스트 결제로 확인했습니다.
+
+### 2. 미디어 서버 없는 휴대폰 라이브 송출
+
+- **상황**: 휴대폰 카메라 영상을 다른 기기에서 실시간으로 봐야 했지만, 별도 미디어 서버를 운영하기에는 규모가 작았습니다.
+- **과제**: 서버 부담 없이 지연이 짧은 송출과, 송출이 끊겼을 때의 정리가 필요했습니다.
+- **행동**: 영상은 WebRTC P2P로 송출자와 시청자가 직접 주고받고, 서버는 WebSocket으로 연결 신호만 중계하게 했습니다. 송출자 생존 신호가 30초 넘게 끊기면 방송을 종료하고, 시청자 수 상한을 두었습니다. 휴대폰 카메라를 쓰려고 개발 서버를 HTTPS로 열었습니다.
+- **결과**: 같은 네트워크에서 휴대폰 송출과 PC·휴대폰 시청이 되고, 송출 탭을 닫거나 연결이 끊긴 방송이 목록에 남지 않습니다.
+
+### 3. 서버에서 하는 권한 검사
+
+- **상황**: 로그인이 생기면서 방송 수정·삭제, 송출, 댓글 삭제를 누가 할 수 있는지 정해야 했고, 화면에서 버튼을 숨기는 것만으로는 막을 수 없었습니다.
+- **과제**: 모든 요청을 서버가 같은 기준으로 판정하고, 송출 키가 새어 나가도 남이 송출하지 못하게 해야 했습니다.
+- **행동**: Spring Security 서버 세션과 SPA용 CSRF 토큰을 쓰고, 판정 순서를 401(로그인) → 404(대상) → 403(소유자·작성자) → 409(상태)로 통일해 한 곳에서 검사했습니다. 송출자로 참가할 때는 송출 키와 함께 소유자인지도 확인했습니다.
+- **결과**: 비로그인·소유자·다른 사용자로 같은 요청을 보내는 표 형태의 테스트로 모든 권한을 확인합니다.
+
+## 개발 과정
+
+| 버전 | 내용 |
+| --- | --- |
+| [v0.1.0](https://github.com/tbafe26/onair/releases/tag/v0.1.0) | 녹화방송 등록·시청 |
+| [v0.2.0](https://github.com/tbafe26/onair/releases/tag/v0.2.0) | 휴대폰 라이브 송출·시청 |
+| [v0.3.0](https://github.com/tbafe26/onair/releases/tag/v0.3.0) | 회원가입·로그인, 방송 소유자 권한, 댓글·실시간 채팅 |
+| [v0.4.0](https://github.com/tbafe26/onair/releases/tag/v0.4.0) | 라이브방송 후원(테스트 결제), 후원 내역·합계 |
+
+- 단계마다 스펙을 쓰고 티켓으로 나눠, 티켓 하나를 브랜치·PR 하나로 개발했습니다(GitHub Flow).
+- PR은 CI(테스트 → 품질 검사 → 빌드)를 통과해야 병합됩니다. 백엔드와 프런트는 공유 계약 파일로 메시지 형식을 함께 검사합니다.
+- 릴리스마다 DB 스키마 스냅샷을 남기고, 이전 버전 DB에서 새 버전이 뜨는지 업그레이드 테스트로 확인합니다.
+- 커밋 훅·CI의 gitleaks와 PR 본문 검사로 비밀 값과 개인 정보가 저장소에 올라가지 않게 막습니다.
+
+변경 내역은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
 
 ## 실행 방법
 
 필요 도구: JDK 25, Node.js, pnpm
-
-**1. 백엔드** (포트 8080)
 
 ```bash
 cd backend
 ./gradlew bootRun
 ```
 
-Windows에서는 `gradlew.bat bootRun`을 씁니다.
-
-**2. 프런트엔드** (포트 5173, 다른 터미널에서)
-
 ```bash
 cd frontend
 pnpm install
-pnpm dev
+pnpm dev:local
 ```
 
-**3. 접속**
+PC에서 `http://localhost:5174`로 접속합니다. 휴대폰으로 송출하려면 `pnpm dev`로 HTTPS 개발 서버(5173)를 띄우고, 같은 Wi-Fi의 휴대폰에서 `https://<PC의 LAN 주소>:5173`으로 접속합니다(자체 서명 인증서 경고는 넘깁니다).
 
-| 기기 | 주소 |
-| --- | --- |
-| PC | `https://localhost:5173` |
-| 휴대폰 | `https://<PC의 LAN 주소>:5173` |
+### 환경변수
 
-휴대폰 브라우저는 HTTPS에서만 카메라를 쓸 수 있어서, 개발 서버는 자체 서명 인증서로 HTTPS를 엽니다.
+모두 선택입니다. 바꿀 때만 `backend/.env.example`을 `backend/.env`로 복사해 고칩니다.
 
-> **이전 버전에서 올라오는 경우:** 3단계 서버를 처음 띄우면 소유자가 없는 기존 방송(1·2단계에 올린 것)을 영상·썸네일 파일과 함께 지웁니다. 되돌릴 수 없으니 남길 영상이 있으면 먼저 `~/.onair/videos`를 복사해 두세요.
-
-## 공개 범위
-
-| 할 일 | 비로그인 | 로그인 | 방송 소유자 | 댓글 작성자 |
-| --- | --- | --- | --- | --- |
-| 방송 목록·상세 보기, 녹화방송 재생, 라이브 시청 | ✅ | ✅ | ✅ | ✅ |
-| 댓글·채팅 읽기 | ✅ | ✅ | ✅ | ✅ |
-| 녹화방송 등록, 라이브 송출 시작 | ❌ 401 | ✅ | ✅ | ✅ |
-| 댓글 쓰기, 채팅 쓰기(방송 중일 때) | ❌ 401 | ✅ | ✅ | ✅ |
-| 후원 내역·합계 보기 | ✅ | ✅ | ✅ | ✅ |
-| 방송 중인 라이브방송에 후원 | ❌ 401 | ✅ | ❌ 403 (자기 방송) | ✅ |
-| 방송 제목 수정·삭제, 송출 종료 | ❌ 401 | ❌ 403 | ✅ | ❌ 403 |
-| 송출자로 참가(송출 키도 맞아야 함) | ❌ `not-owner` | ❌ `not-owner` | ✅ | ❌ `not-owner` |
-| 녹화방송 댓글 삭제 | ❌ 401 | ❌ 403 | ❌ 403 | ✅ |
-
-- 권한은 서버가 요청마다 검사합니다. 화면에서 버튼을 숨기는 것은 보조 수단입니다.
-- 시청과 목록 조회는 로그인 없이 공개합니다. 가입 전에도 방송을 둘러볼 수 있게 하기 위해서입니다.
-- 방송 중인 라이브방송은 지울 수 없습니다(409). 채팅은 누구도 지울 수 없고(409), 종료된 라이브방송에는 채팅을 쓸 수 없습니다(409).
-- 상태를 바꾸는 요청은 CSRF 토큰이 있어야 합니다. 토큰 없이 보내면 로그인 여부와 상관없이 403입니다. 화면은 토큰을 자동으로 싣습니다.
-
-## 구성
-
-```
-휴대폰(송출) ──── 영상·소리(WebRTC, 직접 연결) ────▶ PC 브라우저(시청)
-      │                                                  │
-      └── 연결 신호·채팅(WebSocket) ── 서버 ── 연결 신호·채팅 ──┘
-```
-
-- 로그인 상태는 서버 세션 쿠키로 유지합니다. 서버를 다시 시작하면 다시 로그인해야 합니다.
-- 영상은 휴대폰과 시청 브라우저가 직접 주고받고, 서버는 연결 신호와 채팅만 중계합니다.
-- 중계 서버(STUN/TURN)가 없으므로 **PC와 휴대폰은 같은 Wi-Fi**에 있어야 합니다.
-
-## 휴대폰 연결과 권한 설정
-
-1. **같은 Wi-Fi에 연결합니다.** 게스트 Wi-Fi처럼 기기 간 격리(AP 격리)가 켜진 망에서는 기기끼리 연결되지 않습니다.
-2. **PC의 LAN 주소를 찾습니다.**
-   - Windows: `ipconfig` → 사용 중인 Wi-Fi 어댑터의 "IPv4 주소"
-   - macOS: `ipconfig getifaddr en0`
-   - Linux: `hostname -I`
-3. **인증서 경고를 넘깁니다.** 처음 접속하면 "연결이 비공개로 설정되어 있지 않습니다"가 뜹니다. PC와 휴대폰의 Chrome 모두 "고급" → "(주소)(안전하지 않음)으로 이동"을 누릅니다.
-4. **카메라·마이크를 허용합니다.** 라이브 송출 화면에서 권한을 물으면 "허용"을 누릅니다. 거부했다면 주소창 왼쪽 아이콘 → "권한"에서 카메라와 마이크를 "허용"으로 바꾸고 새로고침합니다.
-
-## 환경변수
-
-후원을 쓰지 않으면 설정하지 않아도 기본값으로 실행됩니다(로그인은 서버 세션이라 서명 키가 필요 없습니다). 바꿀 때만 예시 파일을 복사해 고칩니다. 토스 키를 비우면 후원 주문만 503으로 거절되고 나머지는 그대로 동작합니다.
-
-```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
-
-| 파일 | 변수 | 기본값 | 설명 |
-| --- | --- | --- | --- |
-| `backend/.env` | `H2_DB_PATH` | `~/.onair/db/onair` | DB 파일 위치 |
-| `backend/.env` | `STORAGE_DIR` | `~/.onair/videos` | 영상·썸네일 저장 폴더 |
-| `backend/.env` | `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
-| `backend/.env` | `MAX_LIVE_VIEWERS` | `5` | 라이브방송 하나의 동시 시청자 상한 |
-| `backend/.env` | `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | 연결 신호·채팅(WebSocket)을 받을 화면 주소 |
-| `backend/.env` | `TOSS_CLIENT_KEY` | 없음 | 토스페이먼츠 결제위젯 클라이언트 키(`test_gck_…`) |
-| `backend/.env` | `TOSS_SECRET_KEY` | 없음 | 토스페이먼츠 결제위젯 시크릿 키(`test_gsk_…`) |
-| `backend/.env` | `TOSS_TEST_CODE` | 없음 | 승인 단계 실패를 재현하는 값(예: `REJECT_CARD_PAYMENT`). 테스트 시크릿 키일 때만 쓰입니다 |
-| `frontend/.env` | `API_PROXY_TARGET` | `http://localhost:8080` | 개발 서버가 API 요청을 넘길 백엔드 주소 |
-
-**토스 키:** 토스페이먼츠 개발자 문서·샘플의 공개 **결제위젯** 테스트 키(`test_gck_…`, `test_gsk_…`)를 `backend/.env`에만 넣습니다. 저장소에 올리지 않습니다. 모두가 같이 쓰는 공용 테스트 상점이므로 결제창과 요청에 실제 개인정보를 넣지 않습니다. 클라이언트 키는 서버가 주문 응답에 담아 주므로 프런트 `.env`는 그대로 둡니다.
-
-## 구현 범위
-
-**1단계: 녹화방송**
-- mp4·webm 영상과 제목(1~100자)으로 녹화방송을 등록합니다. 썸네일과 재생 시간은 브라우저가 영상에서 뽑습니다.
-- 목록(무한 스크롤), 상세, 재생과 탐색. 서버를 다시 시작해도 방송이 남습니다.
-
-**2단계: 라이브방송**
-- 휴대폰에서 송출을 시작하고 종료합니다. 송출 전에 썸네일을 고르고 전면·후면 카메라를 바꿀 수 있습니다.
-- "전체 방송"의 라이브 탭에서 방송 중(`LIVE`)·종료 상태를 구분해 보여 줍니다.
-- 시청은 소리를 끈 채 시작하고 "소리 켜기"로 켭니다. 송출 화면에 시청자 수가 보입니다.
-- 송출 종료, 송출 탭 닫기, 30초 넘는 연결 끊김, 서버 재시작 때 방송이 종료됩니다.
-- 동시 시청자가 상한을 넘으면 새 시청자에게 안내를 보여 줍니다.
-
-**3단계: 인증·인가와 댓글**
-- 아이디(영문 소문자·숫자 4~20자)·비밀번호(8~64자)·닉네임(1~20자)으로 가입하면 바로 로그인됩니다. 헤더의 프로필 메뉴에서 로그아웃합니다.
-- 녹화방송을 등록하거나 송출을 시작한 사용자가 소유자가 되고, 카드와 상세에 소유자 닉네임이 보입니다.
-- 프로필 메뉴의 "내 방송"에서 내 방송을 보고 제목 수정, 삭제, 방송 중인 라이브방송의 송출 종료를 합니다. 상세 화면에도 소유자에게만 같은 버튼이 보입니다.
-- 송출 키가 새어 나가도 소유자만 송출자로 참가합니다.
-- 녹화방송 영상 아래에 댓글(1~300자, 최신순)을 쓰고, 작성자는 자기 댓글을 지웁니다.
-- 라이브방송에는 실시간 채팅 패널(데스크톱은 오른쪽, 휴대폰은 영상 아래)이 있고, 송출 화면에서도 채팅합니다. 채팅은 저장되어 방송이 끝난 뒤에도 읽을 수 있습니다.
-
-**4단계: 후원**
-- 방송 중인 남의 라이브방송 시청 화면에서 채팅 입력창 아래 줄의 "후원하기" 버튼을 누르면 채팅 위에 후원 패널(휴대폰 폭에서는 아래에서 올라오는 시트)이 열립니다. 패널에서 금액(1,000~500,000원, 1,000원 단위, `+1천` `+1만` `+10만` 버튼으로 더할 수 있음)과 메시지(선택, 100자 이하)를 정하고 "후원하기"를 누르면 화면 가운데 모달에서 토스페이먼츠 결제위젯으로 테스트 결제합니다. 받는 사람은 방송 소유자입니다.
-- 서버가 결제 승인, 금액, 받는 사람을 확인한 뒤에 후원을 확정합니다. 같은 승인이나 승인 통지가 반복되어도 한 번만 적립합니다.
-- 확정된 후원은 후원 내역·합계에 보이고, 방송 중이면 채팅 패널에 닉네임·메시지·금액이 보이는 강조색 후원 박스로 실시간으로 나타납니다. 결제창을 닫으면 취소, 승인이 거절되면 실패로 기록하며 내역에는 확정만 보입니다.
-
-**범위 밖:** 실제 결제, 정산·환불, 녹화방송 후원, 소셜 로그인, 비밀번호 변경·찾기, 회원 탈퇴, 댓글 수정·답글, 채팅 관리(숨기기·차단), 검색, 라이브 녹화·다시보기, 다른 네트워크에서의 송출·시청
-
-## 직접 확인 절차
-
-백엔드와 프런트엔드를 띄워 둔 상태에서 진행합니다. 3단계부터 등록과 송출은 로그인해야 하므로, 1·2단계 확인도 먼저 가입하거나 로그인한 뒤 진행합니다.
-
-### 1단계: 녹화방송
-
-준비물: mp4 파일, webm 파일, 확장자만 `.mp4`로 바꾼 텍스트 파일
-
-| # | 할 일 | 확인할 것 |
+| 변수 | 기본값 | 설명 |
 | --- | --- | --- |
-| 1 | `https://localhost:5173/broadcasts/new`에서 제목을 넣고 mp4를 고른 뒤 "등록" | 썸네일·재생 시간 미리보기, 등록 뒤 상세 화면으로 이동 |
-| 2 | 같은 방법으로 webm 등록 | 1번과 같음 |
-| 3 | "전체 방송" → "녹화방송" 탭 | 방금 등록한 방송이 맨 앞, 썸네일·재생 시간·제목·등록일 표시 |
-| 4 | 카드를 눌러 재생하고 재생 막대를 옮김 | 옮긴 지점부터 재생 |
-| 5 | 백엔드를 껐다 다시 켬 | 목록·상세·재생이 그대로(다시 로그인 필요) |
-| 6 | 제목 비우기, 가짜 mp4 고르기, `/broadcasts/9999` 열기 | 각각 이유가 보이고 등록되지 않음, "방송을 찾을 수 없습니다" |
+| `H2_DB_PATH` | `~/.onair/db/onair` | DB 파일 위치 |
+| `STORAGE_DIR` | `~/.onair/videos` | 영상·썸네일 저장 폴더 |
+| `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
+| `MAX_LIVE_VIEWERS` | `5` | 라이브방송 하나의 동시 시청자 상한 |
+| `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | WebSocket을 받을 화면 주소 |
+| `TOSS_CLIENT_KEY` | 없음 | 토스페이먼츠 결제위젯 클라이언트 키(`test_gck_…`) |
+| `TOSS_SECRET_KEY` | 없음 | 토스페이먼츠 결제위젯 시크릿 키(`test_gsk_…`) |
+| `TOSS_TEST_CODE` | 없음 | 승인 실패를 재현하는 테스트 코드(예: `REJECT_CARD_PAYMENT`) |
 
-### 2단계: 라이브방송
-
-PC와 휴대폰을 같은 Wi-Fi에 연결하고 [휴대폰 연결과 권한 설정](#휴대폰-연결과-권한-설정)을 마친 상태에서 진행합니다. 휴대폰에서도 로그인합니다.
-
-| # | 기기 | 할 일 | 확인할 것 |
-| --- | --- | --- | --- |
-| 1 | 휴대폰 | `https://<PC의 LAN 주소>:5173` 접속, 왼쪽 위 메뉴 버튼 | 사이드바가 화면 위에 펼쳐지고 바깥을 누르면 닫힘 |
-| 2 | 휴대폰 | "라이브 송출" → 카메라 허용 → "카메라 전환" | 미리보기가 보이고 전면·후면이 바뀜 |
-| 3 | 휴대폰 | 제목 입력 → "송출 시작" | `LIVE`, 경과 시간, "시청자 0명" |
-| 4 | PC | `https://localhost:5173` → 라이브 탭 → 방송 카드 | `LIVE` 배지, 소리 없이 재생 |
-| 5 | PC | "소리 켜기" | 소리가 남 |
-| 6 | 휴대폰 | 송출 화면 확인 | "시청자 1/5" |
-| 7 | 휴대폰 | "송출 종료" | PC에 "방송이 종료되었습니다", 목록 카드는 `종료` |
-| 8 | 휴대폰 | 다시 송출한 뒤 탭 닫기 | PC 시청 화면이 바로 종료 안내로 바뀜 |
-| 9 | 백엔드 | `MAX_LIVE_VIEWERS=1`로 다시 띄우고 송출, PC 탭 두 개로 시청 | 두 번째 탭에 "시청자가 많아 지금은 볼 수 없습니다" |
-
-### 3단계: 인증·인가와 댓글
-
-세 사용자로 나눠 확인합니다. 한 PC에서 하려면 일반 창(소유자), 시크릿 창(다른 사용자), 다른 브라우저(비로그인)를 씁니다.
-
-- **비로그인 사용자:** 로그인하지 않은 브라우저
-- **방송 소유자:** 가입한 계정 A. 방송을 등록하고 송출합니다.
-- **다른 사용자:** 가입한 계정 B
-
-**화면에서 확인**
-
-| # | 누가 | 할 일 | 확인할 것 |
-| --- | --- | --- | --- |
-| 1 | 비로그인 | 오른쪽 위 "로그인" → "회원가입"에서 A 가입 | 가입 즉시 로그인, 헤더에 닉네임 프로필 메뉴 |
-| 2 | A | 프로필 메뉴 → "로그아웃" 뒤 다시 로그인 | 헤더가 "로그인" 버튼으로 바뀌었다가 돌아옴, 새로고침해도 로그인 유지 |
-| 3 | 비로그인 | 헤더의 "녹화방송 등록" 또는 "라이브 송출" | 로그인 화면으로 이동, 로그인하면 원래 화면으로 돌아옴 |
-| 4 | A | 녹화방송 등록, 휴대폰에서 라이브 송출 시작 | 카드·상세에 A의 닉네임 |
-| 5 | A | 프로필 메뉴 → "내 방송" | 두 방송이 보이고 "제목 수정"·"삭제"·(방송 중인 라이브에) "송출 종료" |
-| 6 | A | 녹화방송 제목 수정, 방송 중인 라이브방송 "삭제" | 제목이 바뀜, 라이브방송은 "방송 중인 라이브방송은 지울 수 없습니다…" 안내와 함께 남음 |
-| 7 | B | A의 방송 상세 | 관리 버튼이 보이지 않음 |
-| 8 | 비로그인 | 녹화방송 상세의 댓글 영역, 라이브 상세의 채팅 패널 | 댓글·채팅은 보이고, 입력창 대신 "로그인 후 …" 안내 |
-| 9 | B | 녹화방송에 댓글 쓰기 | 목록 맨 위에 보이고 B의 댓글에만 "삭제" |
-| 10 | A | 같은 녹화방송 상세 | B의 댓글에 "삭제"가 없음 |
-| 11 | B | 라이브 시청 화면에서 채팅 입력 후 Enter | A의 송출 화면과 다른 시청 화면에 바로 나타남 |
-| 12 | A | "내 방송"에서 라이브방송 "송출 종료" | 시청 화면이 "방송이 종료되었습니다", 채팅 패널은 "채팅이 종료되었습니다" |
-| 13 | A | 녹화방송 "삭제" | 목록에서 사라지고 댓글도 함께 지워짐 |
-
-**API로 확인(버튼을 거치지 않은 요청도 서버가 거절하는지)**
-
-Git Bash나 macOS·Linux 터미널에서 백엔드(8080)에 직접 보냅니다. 상태를 바꾸는 요청에는 쿠키의 CSRF 토큰을 헤더로 싣습니다. Windows 터미널에서는 요청 본문의 한글이 깨질 수 있어 예시는 영문으로 씁니다.
-
-```bash
-API=http://localhost:8080/api
-token() { awk '$6=="XSRF-TOKEN"{print $7}' "$1"; }
-call() { # call <쿠키 파일> <메서드> <경로> [curl 인자...] → 상태 코드 출력
-  local jar=$1 method=$2 path=$3; shift 3
-  curl -s -o /dev/null -w '%{http_code}\n' -b "$jar" -c "$jar" -X "$method" \
-    -H "X-XSRF-TOKEN: $(token "$jar")" "$@" "$API$path"
-}
-json=(-H 'Content-Type: application/json')
-
-# 세 사용자의 쿠키 파일을 만들고(토큰 받기) A, B로 로그인한다. 아이디·비밀번호는 화면에서 가입한 값으로 바꾼다.
-for who in guest a b; do curl -s -o /dev/null -c $who.txt $API/auth/me; done
-call a.txt POST /auth/login "${json[@]}" -d '{"loginId":"<A 아이디>","password":"<A 비밀번호>"}'   # 200
-call b.txt POST /auth/login "${json[@]}" -d '{"loginId":"<B 아이디>","password":"<B 비밀번호>"}'   # 200
-
-REC=<A의 녹화방송 id>   # 상세 주소 /broadcasts/<id>의 숫자
-LIVE=<A의 방송 중인 라이브방송 id>
-```
-
-한 줄마다 비로그인 → 다른 사용자 → 소유자 순으로 쿠키 파일만 바꿔 보냅니다.
-
-| # | 요청 | 비로그인(`guest.txt`) | 다른 사용자(`b.txt`) | 소유자(`a.txt`) |
-| --- | --- | --- | --- | --- |
-| 1 | `call <쿠키> POST /broadcasts/live -F title=live` | 401 | 201 | 201 |
-| 2 | `call <쿠키> PATCH /broadcasts/$REC "${json[@]}" -d '{"title":"new title"}'` | 401 | 403 | 200 |
-| 3 | `call <쿠키> POST /broadcasts/$REC/comments "${json[@]}" -d '{"content":"hello"}'` | 401 | 201 | 201 |
-| 4 | `call <쿠키> POST /broadcasts/$LIVE/end` | 401 | 403 | 204 |
-| 5 | `call <쿠키> DELETE /broadcasts/$REC` | 401 | 403 | 204 |
-
-댓글 삭제는 B가 쓴 댓글로 확인합니다. 5번(녹화방송 삭제)보다 먼저 합니다.
-
-```bash
-call b.txt POST /broadcasts/$REC/comments "${json[@]}" -d '{"content":"by b"}'   # 201
-CID=$(curl -s $API/broadcasts/$REC/comments | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-call guest.txt DELETE /broadcasts/$REC/comments/$CID   # 401
-call a.txt DELETE /broadcasts/$REC/comments/$CID       # 403 (방송 소유자도 남의 댓글은 못 지움)
-call b.txt DELETE /broadcasts/$REC/comments/$CID       # 204
-```
-
-- 방송 중인 라이브방송을 지우면 409, 4번으로 종료한 라이브방송에 채팅을 쓰면 409입니다.
-- 토큰 없이 보낸 요청(`curl -X POST $API/broadcasts/$REC/comments ...`)은 403입니다.
-- 송출자 참가 검사(`not-owner`)는 송출 키가 송출 화면 밖으로 나오지 않아 손으로 재현하기 어렵습니다. 자동 테스트(`SignalingWebSocketTest`)가 비로그인·다른 사용자·소유자 연결로 확인합니다.
-
-### 4단계: 후원
-
-백엔드를 띄우기 전에 `backend/.env`에 토스 테스트 키를 넣어 둡니다([환경변수](#환경변수)). 후원할 사용자(B)와 방송 소유자(A)를 가입시키고, A가 휴대폰에서 송출을 시작한 상태로 B로 시청합니다. 결제창은 PC(`https://localhost:5173`)에서도 휴대폰에서도 열립니다.
-
-> **주의:** 이 결제는 모두가 같이 쓰는 공용 테스트 상점입니다. 결제수단은 **퀵계좌이체**를 고르고, 토스가 화면에 보여 주는 테스트 값(미리 채워진 테스트 휴대폰번호, 테스트 비밀번호)만 씁니다. **카드번호, 실제 계좌, 실제 휴대폰번호는 절대 넣지 않습니다.** 다른 입력을 요구하는 화면이 나오면 멈추고 닫습니다.
-
-**화면에서 확인**
-
-| # | 누가 | 할 일 | 확인할 것 |
-| --- | --- | --- | --- |
-| 1 | B | 방송 중인 A의 시청 화면의 채팅 입력창 아래 줄 "후원하기" → 후원 패널(휴대폰 폭에서는 시트)에서 `+1천`으로 금액 입력 → "후원하기" | 화면 가운데 모달에 받는 사람(A 닉네임)과 금액, "테스트 결제입니다" 안내, 결제위젯 표시. "이전"이나 모달 닫기로 입력값이 남은 패널로 돌아옴 |
-| 2 | B | 퀵계좌이체를 고르고 모달의 "결제하기" → 토스 화면의 테스트 값만 입력해 결제 | 방송 화면으로 돌아와 성공 알림, 후원 합계·건수 증가, 내역 맨 위에 B의 후원, 채팅 패널에 후원 박스 표시(A의 송출 화면과 다른 시청 화면에도) |
-| 3 | B | 다시 "후원하기" → 패널의 "후원하기" → 모달의 "결제하기"를 누른 뒤 결제창을 닫음 | "후원을 취소했습니다" 알림, 합계·내역은 그대로 |
-| 4 | B | `backend/.env`에 `TOSS_TEST_CODE=REJECT_CARD_PAYMENT`를 넣고 백엔드를 다시 띄운 뒤(다시 로그인·송출) 2번처럼 결제 | 승인이 거절되어 "후원하지 못했습니다" 알림, 합계·내역은 그대로. 확인이 끝나면 `TOSS_TEST_CODE`를 지웁니다 |
-| 5 | A | 자기 방송 시청 화면 | 후원 버튼이 보이지 않음 |
-| 6 | 비로그인 | 방송 시청 화면 | 후원 버튼 없이 채팅 입력 자리의 로그인 안내, 내역·합계는 보임 |
-| 7 | B | 송출이 끝난 방송 화면 | 후원 버튼이 없고, 내역은 남음 |
-
-취소와 실패는 "후원 기록"으로 남지만 내역과 합계에는 확정된 후원만 보입니다.
-
-**API로 확인(화면을 거치지 않은 요청도 서버가 거절하는지)**
-
-[3단계의 API 확인](#3단계-인증인가와-댓글)에서 만든 `API`, `token`, `call`, `json`, 쿠키 파일(`guest.txt`, `a.txt`, `b.txt`)을 그대로 씁니다. 방송 소유자는 A, 후원자는 B이고 `LIVE`는 방송 중인 A의 라이브방송 id입니다. 서버는 송출자가 연결을 끊으면 방송을 종료하므로 휴대폰 송출을 켜 둔 채 진행합니다.
-
-```bash
-order() { # order <쿠키 파일> <방송 id> <금액> → 주문 번호 출력
-  curl -s -b "$1" -c "$1" -X POST -H "X-XSRF-TOKEN: $(token "$1")" "${json[@]}" \
-    -d "{\"amount\":$3}" "$API/broadcasts/$2/donations" | grep -o '"orderId":"[^"]*"' | cut -d'"' -f4
-}
-```
-
-*주문 만들기와 권한* (한 줄마다 상태 코드를 확인합니다)
-
-| 요청 | 결과 |
-| --- | --- |
-| `call guest.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1000}'` | 401 |
-| `call a.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1000}'` (자기 방송) | 403 |
-| `call b.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1500}'` (1,000원 단위가 아님. 500, 600000도 400) | 400 |
-| `call b.txt POST /broadcasts/<녹화방송 id>/donations "${json[@]}" -d '{"amount":1000}'` | 409 |
-| `call b.txt POST /broadcasts/<종료된 라이브방송 id>/donations "${json[@]}" -d '{"amount":1000}'` | 409 |
-| `call b.txt POST /broadcasts/9999/donations "${json[@]}" -d '{"amount":1000}'` | 404 |
-| `call b.txt POST /broadcasts/$LIVE/donations "${json[@]}" -d '{"amount":1000}'` | 201 |
-
-*금액 변조:* 대기 중인 주문에 다른 금액으로 승인을 요청하면 결제 서비스를 부르기 전에 거절하고, 그 주문을 실패로 기록합니다.
-
-```bash
-ORD=$(order b.txt $LIVE 1000)
-call b.txt POST /donations/confirm "${json[@]}" -d "{\"paymentKey\":\"<paymentKey>\",\"orderId\":\"$ORD\",\"amount\":2000}"   # 400
-call b.txt POST /donations/confirm "${json[@]}" -d "{\"paymentKey\":\"<paymentKey>\",\"orderId\":\"$ORD\",\"amount\":1000}"   # 409 (이미 실패로 기록됨)
-```
-
-여기서 `<paymentKey>`는 아무 문자열이어도 400이 나옵니다(승인 전에 막으므로).
-
-*다른 사용자와 없는 주문:*
-
-```bash
-ORD=$(order b.txt $LIVE 2000)
-body="{\"paymentKey\":\"<paymentKey>\",\"orderId\":\"$ORD\",\"amount\":2000}"
-call guest.txt POST /donations/confirm "${json[@]}" -d "$body"   # 401
-call a.txt POST /donations/confirm "${json[@]}" -d "$body"       # 403 (다른 사용자의 주문)
-call b.txt POST /donations/confirm "${json[@]}" -d '{"paymentKey":"<paymentKey>","orderId":"<orderId>","amount":2000}'   # 404 (없는 주문)
-call a.txt POST /donations/$ORD/fail "${json[@]}" -d '{"code":"PAY_PROCESS_CANCELED"}'   # 403
-call b.txt POST /donations/$ORD/fail "${json[@]}" -d '{"code":"PAY_PROCESS_CANCELED"}'   # 200, 응답 status는 CANCELED
-```
-
-*승인 통지:* 로그인과 CSRF 토큰 없이 받는 주소이고, 결과와 상관없이 200을 돌려줍니다. 본문은 믿지 않고 서버가 결제 서비스에서 결제를 다시 조회해 확정합니다.
-
-```bash
-NOTIFY='{"eventType":"PAYMENT_STATUS_CHANGED","data":{"paymentKey":"<paymentKey>","orderId":"<orderId>","status":"DONE"}}'
-for i in 1 2 3; do
-  curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d "$NOTIFY" "$API/payments/toss/notifications"   # 모두 200
-done
-curl -s "$API/broadcasts/$LIVE/donations"   # 모르는 주문이면 합계가 바뀌지 않음
-```
-
-**실제 결제로 만든 `<paymentKey>`가 필요한 확인**
-
-승인 중복과 승인 통지 중복은 토스가 발급한 진짜 `<paymentKey>`가 있어야 합니다. 위 화면 확인 2번을 하면서, 브라우저 개발자 도구의 네트워크 탭에서 `confirm` 요청의 요청 본문(`paymentKey`, `orderId`, `amount`)을 본인 터미널에 복사합니다(성공 주소의 쿼리 문자열에도 같은 값이 있습니다). 이 값은 이슈·PR·커밋·스크린샷에 붙이지 않습니다.
-
-```bash
-PK=<paymentKey>; ORD=<orderId>; AMT=<금액>
-body="{\"paymentKey\":\"$PK\",\"orderId\":\"$ORD\",\"amount\":$AMT}"
-# 승인 중복: 화면이 이미 승인한 같은 요청을 다시 보낸다
-call b.txt POST /donations/confirm "${json[@]}" -d "$body"   # 200 (같은 결과)
-# 동시 승인: 같은 요청 다섯 개를 한꺼번에 보낸다
-for i in 1 2 3 4 5; do call b.txt POST /donations/confirm "${json[@]}" -d "$body" & done; wait   # 모두 200
-# 승인 통지 중복: 확정된 결제의 통지를 여러 번 보낸다
-NOTIFY="{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"$PK\",\"orderId\":\"$ORD\",\"status\":\"DONE\"}}"
-for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d "$NOTIFY" "$API/payments/toss/notifications"; done   # 모두 200
-curl -s "$API/broadcasts/$LIVE/donations"   # 합계 건수와 내역이 그대로(한 건)
-# 금액을 바꾼 승인은 확정된 주문에도 400
-call b.txt POST /donations/confirm "${json[@]}" -d "{\"paymentKey\":\"$PK\",\"orderId\":\"$ORD\",\"amount\":2000}"   # 400
-```
-
-- 송출이 끝난 뒤에 승인해도 이미 시작한 결제는 확정됩니다. 종료된 방송에 새 주문은 만들 수 없습니다(409).
-- 토스 키를 비우고 백엔드를 띄우면 새 주문이 503입니다.
-- 결제창을 확인한 결과(`paymentKey`, `orderId`, 화면 캡처)는 공개되는 곳에 붙이지 않습니다.
+후원을 쓰려면 토스페이먼츠 개발자 문서의 공개 결제위젯 테스트 키를 `backend/.env`에만 넣습니다. 키가 없으면 후원 주문만 503이고 나머지는 그대로 동작합니다. 공용 테스트 상점이므로 결제창에는 퀵계좌이체를 고르고 토스가 보여 주는 테스트 값만 씁니다(카드번호·실제 개인정보는 넣지 않습니다).
