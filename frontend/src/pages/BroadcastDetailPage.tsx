@@ -13,7 +13,6 @@ import { useAuth } from '../auth/auth-context'
 import { BroadcastOwnerActions } from '../components/BroadcastOwnerActions'
 import { BroadcastThumbnail } from '../components/BroadcastThumbnail'
 import { ChatPanel } from '../components/ChatPanel'
-import { DonationButton } from '../components/DonationButton'
 import { DonationHistory } from '../components/DonationHistory'
 import { DonationNotice } from '../components/DonationNotice'
 import { RecordingComments } from '../components/RecordingComments'
@@ -115,13 +114,16 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
         <div className="px-5">
           <DonationNotice />
           <BroadcastHeader broadcast={data} />
-          {onAir &&<DonationButton broadcastId={data.id} ownerId={data.owner.id} ownerNickname={data.owner.nickname} />}
           <DonationHistory key={data.id} broadcastId={data.id} className="mt-6 pb-2" />
         </div>
       </section>
       {/* 넓은 화면은 영상 오른쪽 360px 열, 좁은 화면은 영상 아래에 채팅을 두고 그 아래에 방송 더보기를 둔다. */}
       <div className="flex w-full shrink-0 flex-col gap-6 px-5 pt-5 lg:w-[360px] lg:pt-0 lg:pr-5 lg:pl-5">
-        <ChatPanel key={data.id} broadcastId={data.id} className="h-[26rem] lg:h-[34rem]" />
+        <ChatPanel
+          key={data.id}
+          broadcastId={data.id}
+          recipient={onAir ? data.owner : undefined}
+          className="h-[26rem] lg:h-[34rem]" />
         <MoreBroadcastsPanel currentId={data.id} />
       </div>
     </div>

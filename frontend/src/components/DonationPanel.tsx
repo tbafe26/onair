@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   DONATION_AMOUNT_CHOICES,
   DONATION_AMOUNT_RULE,
@@ -12,7 +12,8 @@ import {
   type DonationOrder,
 } from '../api/donations'
 import { paymentReturnUrls, usePaymentWidget, type PaymentWidgetSession } from '../payments/payment-widget'
-import { Modal } from './Modal'
+import { cn } from '@/lib/utils'
+import { useIsMobile } from '../hooks/useMediaQuery'
 import { TextField } from './TextField'
 import { Button } from './ui/button'
 
@@ -22,10 +23,69 @@ const METHODS_ID = 'donation-payment-methods'
 const AGREEMENT_ID = 'donation-payment-agreement'
 
 /**
- * 후원 창. 1단계에서 금액과 메시지를 고르고 받는 사람과 금액을 확인한다.
+ * 채팅 패널 위에 겹쳐 열리는 후원 패널의 틀이다. 휴대폰 폭에서는 화면 아래에서 올라오는 시트로 연다.
+ * 제목과 버튼 줄은 고정하고 본문(결제위젯 포함)만 스크롤한다. Esc로 닫는다.
+ */
+function PanelFrame({
+  title,
+  footer,
+  onClose,
+  children,
+}: {
+  title: string
+  footer: ReactNode
+  onClose: () => void
+  children: ReactNode
+}) {
+  const titleId = useId()
+  const sheet = useIsMobile()
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
+  const panel = (
+    <div
+      role="dialog"
+      aria-modal={sheet}
+      aria-labelledby={titleId}
+      data-sheet={sheet ? '' : undefined}
+      className={cn(
+        'flex flex-col bg-card',
+        sheet ? 'max-h-[85dvh] w-full rounded-t-2xl border-t border-border shadow-xl' : 'absolute inset-0 z-10',
+      )}
+    >
+      <h2 id={titleId} className="border-b border-border px-4 py-3 text-base font-bold text-foreground">
+        {title}
+      </h2>
+      <div data-panel-body className="min-h-0 flex-1 overflow-y-auto p-4">
+        {children}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-border p-3">{footer}</div>
+    </div>
+  )
+  if (!sheet) return panel
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/60"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      {panel}
+    </div>
+  )
+}
+
+/**
+ * 후원 패널. 1단계에서 금액과 메시지를 고르고 받는 사람과 금액을 확인한다.
  * "다음"을 누르면 주문을 만들고 결제위젯을 그리며, 2단계의 "후원하기"가 결제창을 연다.
  */
-export function DonationDialog({
+export function DonationPanel({
   broadcastId,
   recipientNickname,
   onClose,
@@ -122,30 +182,48 @@ export function DonationDialog({
 
   if (order) {
     return (
-      <Modal title="후원하기" onClose={onClose}>
-        <div className="mt-4 flex flex-col gap-4">
-          {summary}
-          <p className="text-sm text-sub">테스트 결제입니다. 실제 카드·개인정보를 입력하지 마세요</p>
-          <div id={METHODS_ID} />
-          <div id={AGREEMENT_ID} />
-          {!session && !failure.general && <p className="text-sm text-sub">결제 화면을 불러오는 중...</p>}
-          {generalError}
-          <div className="flex justify-end gap-2">
+      <PanelFrame
+        title="후원하기"
+        onClose={onClose}
+        footer={
+          <>
             <Button type="button" variant="outline" onClick={back}>
               이전
             </Button>
             <Button type="button" disabled={!session || submitting} onClick={() => void pay()}>
               후원하기
             </Button>
-          </div>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {summary}
+          <p className="text-sm text-sub">테스트 결제입니다. 실제 카드·개인정보를 입력하지 마세요</p>
+          <div id={METHODS_ID} />
+          <div id={AGREEMENT_ID} />
+          {!session && !failure.general && <p className="text-sm text-sub">결제 화면을 불러오는 중...</p>}
+          {generalError}
         </div>
-      </Modal>
+      </PanelFrame>
     )
   }
 
   return (
-    <Modal title="후원하기" onClose={onClose}>
-      <form onSubmit={(event) => void next(event)} noValidate className="mt-4 flex flex-col gap-4">
+    <PanelFrame
+      title="후원하기"
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose}>
+            닫기
+          </Button>
+          <Button type="submit" form="donation-form" disabled={submitting}>
+            다음
+          </Button>
+        </>
+      }
+    >
+      <form id="donation-form" onSubmit={(event) => void next(event)} noValidate className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-2" role="group" aria-label="금액 선택">
           {DONATION_AMOUNT_CHOICES.map((choice) => (
             <Button
@@ -161,6 +239,7 @@ export function DonationDialog({
         </div>
         <TextField
           id="donation-amount"
+          autoFocus
           label="금액(원)"
           inputMode="numeric"
           autoComplete="off"
@@ -188,15 +267,7 @@ export function DonationDialog({
         </div>
         {summary}
         {generalError}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            닫기
-          </Button>
-          <Button type="submit" disabled={submitting}>
-            다음
-          </Button>
-        </div>
       </form>
-    </Modal>
+    </PanelFrame>
   )
 }

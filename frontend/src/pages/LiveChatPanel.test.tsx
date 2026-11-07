@@ -237,8 +237,9 @@ it('후원은 닉네임과 금액과 메시지가 있는 줄로 채팅 사이에
   })
 
   const rows = within(within(panel).getByRole('list', { name: '채팅 목록' })).getAllByRole('listitem')
-  expect(rows.map((row) => row.textContent)).toEqual(['시청자먼저', '후원자A5,000원 후원<b>힘내세요</b>', '시청자나중'])
-  expect(within(rows[1]).getByText('5,000원 후원')).toBeInTheDocument()
+  expect(rows.map((row) => row.textContent)).toEqual(['시청자먼저', '후원자A후원5,000원<b>힘내세요</b>', '시청자나중'])
+  expect(within(rows[1]).getByText('5,000원')).toHaveClass('text-2xl')
+  expect(within(rows[1]).getByText('후원자A')).toBeInTheDocument()
   expect(rows[1].querySelector('b')).toBeNull()
   expect(rows[1]).toHaveAttribute('data-donation')
   expect(rows[0]).not.toHaveAttribute('data-donation')
@@ -262,5 +263,5 @@ it('메시지 없는 후원도 줄로 보이고 후원만 있어도 빈 채팅 �
 
   expect(within(panel).queryByText('아직 채팅이 없습니다')).not.toBeInTheDocument()
   expect(within(panel).getByText('후원자A')).toBeInTheDocument()
-  expect(within(panel).getByText('1,000원 후원')).toBeInTheDocument()
+  expect(within(panel).getByText('1,000원')).toBeInTheDocument()
 })

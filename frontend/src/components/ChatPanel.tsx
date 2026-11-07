@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import type { ChatState } from '../live/chat'
 import type { ChatDonation } from '../live/chat-protocol'
 import { useLiveChat } from '../live/useLiveChat'
+import { DonationPanel } from './DonationPanel'
 import { Button } from './ui/button'
 
 /** 맨 아래에서 이 거리(px) 안이면 맨 아래에 있다고 본다. */
@@ -17,20 +18,37 @@ const STICK_THRESHOLD = 40
  * 라이브방송 채팅 패널. 채팅 내용은 React의 기본 이스케이프로 글자 그대로 보여 준다.
  * 높이는 className으로 정한다. 목록이 넘치면 패널 안에서만 스크롤한다.
  */
-export function ChatPanel({ broadcastId, className }: { broadcastId: number; className?: string }) {
+export function ChatPanel({
+  broadcastId,
+  recipient,
+  className,
+}: {
+  broadcastId: number
+  /** 후원을 받을 소유자. 후원할 수 있는 화면(방송 중인 라이브방송 시청)에서만 넘기며, 있으면 입력창 옆에 후원 버튼이 생긴다. */
+  recipient?: { id: number; nickname: string }
+  className?: string
+}) {
   const { state, send, retry, onReconnected } = useLiveChat(broadcastId)
+  const [donating, setDonating] = useState(false)
   useDonationEvents(broadcastId, state, onReconnected)
 
   return (
     <section
       aria-labelledby={`chat-title-${broadcastId}`}
-      className={cn('flex h-[28rem] flex-col overflow-hidden rounded-xl border border-border bg-card', className)}
+      className={cn('relative flex h-[28rem] flex-col overflow-hidden rounded-xl border border-border bg-card', className)}
     >
       <h2 id={`chat-title-${broadcastId}`} className="border-b border-border px-4 py-3 text-base font-bold text-foreground">
         채팅
       </h2>
       <ChatList state={state} onRetry={retry} />
-      <ChatInput state={state} send={send} />
+      <ChatInput
+        state={state}
+        send={send}
+        onDonate={recipient ? { ownerId: recipient.id, open: () => setDonating(true) } : undefined}
+      />
+      {donating && recipient && (
+        <DonationPanel broadcastId={broadcastId} recipientNickname={recipient.nickname} onClose={() => setDonating(false)} />
+      )}
     </section>
   )
 }
@@ -114,11 +132,14 @@ function ChatList({ state, onRetry }: { state: ChatState; onRetry: () => void })
               <li
                 key={item.key}
                 data-donation=""
-                className="break-words whitespace-pre-wrap rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-2"
+                className="break-words whitespace-pre-wrap rounded-lg border-2 border-primary/50 bg-primary/10 px-3 py-2.5"
               >
-                <span className="mr-2 font-semibold text-foreground">{item.donation.donor.nickname}</span>
-                <span className="font-bold text-primary">{item.donation.amount.toLocaleString('ko-KR')}원 후원</span>
-                {item.donation.message && <p className="mt-0.5 text-foreground">{item.donation.message}</p>}
+                <p className="flex items-baseline gap-1.5 text-xs text-sub">
+                  <span className="font-semibold text-foreground">{item.donation.donor.nickname}</span>
+                  <span>후원</span>
+                </p>
+                <p className="text-2xl font-extrabold text-primary">{item.donation.amount.toLocaleString('ko-KR')}원</p>
+                {item.donation.message && <p className="mt-1 text-foreground">{item.donation.message}</p>}
               </li>
             ) : (
               <li key={item.key} className="break-words whitespace-pre-wrap">
@@ -133,7 +154,15 @@ function ChatList({ state, onRetry }: { state: ChatState; onRetry: () => void })
   )
 }
 
-function ChatInput({ state, send }: { state: ChatState; send: (content: string) => Promise<void> }) {
+function ChatInput({
+  state,
+  send,
+  onDonate,
+}: {
+  state: ChatState
+  send: (content: string) => Promise<void>
+  onDonate?: { ownerId: number; open: () => void }
+}) {
   const { state: auth } = useAuth()
   const location = useLocation()
   const [content, setContent] = useState('')
@@ -189,6 +218,7 @@ function ChatInput({ state, send }: { state: ChatState; send: (content: string) 
           {error}
         </p>
       )}
+      <div className="flex items-end gap-2">
       <textarea
         aria-label="채팅 입력"
         value={content}
@@ -196,10 +226,16 @@ function ChatInput({ state, send }: { state: ChatState; send: (content: string) 
         maxLength={MAX_COMMENT_LENGTH}
         disabled={state.phase !== 'open'}
         placeholder="채팅을 입력하세요 (Enter로 보내기, Shift+Enter로 줄바꿈)"
-        className="w-full resize-none rounded-lg border border-border bg-background p-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+        className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background p-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         onChange={(event) => setContent(event.target.value)}
         onKeyDown={handleKeyDown}
       />
+      {onDonate && auth.user.id !== onDonate.ownerId && (
+        <Button type="button" variant="outline" onClick={onDonate.open}>
+          후원
+        </Button>
+      )}
+      </div>
     </div>
   )
 }
