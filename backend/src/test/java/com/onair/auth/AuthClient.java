@@ -22,12 +22,12 @@ public final class AuthClient {
     public static final String PASSWORD = "password-1234";
 
     /** Spring Session이 세션 id를 싣는 쿠키 이름. */
-    static final String SESSION_COOKIE = "SESSION";
+    public static final String SESSION_COOKIE = "SESSION";
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final MockMvc mockMvc;
-    private String session;
+    private String sessionCookie;
     private String csrf;
     private long userId;
 
@@ -79,12 +79,10 @@ public final class AuthClient {
         return csrf;
     }
 
-    /** 지금 들고 있는 세션 쿠키 값. 세션이 없으면 null. */
-    public String sessionId() {
-        return session;
+    public String sessionCookie() {
+        return sessionCookie;
     }
 
-    /** 세션 쿠키만 싣는다(읽기 요청). */
     public RequestPostProcessor session() {
         return request -> {
             request.setCookies(cookies(false));
@@ -105,8 +103,8 @@ public final class AuthClient {
 
     private Cookie[] cookies(boolean withCsrf) {
         List<Cookie> cookies = new ArrayList<>();
-        if (session != null) {
-            cookies.add(new Cookie(SESSION_COOKIE, session));
+        if (sessionCookie != null) {
+            cookies.add(new Cookie(SESSION_COOKIE, sessionCookie));
         }
         if (withCsrf && csrf != null) {
             cookies.add(new Cookie(Csrf.COOKIE, csrf));
@@ -129,7 +127,7 @@ public final class AuthClient {
             if (Csrf.COOKIE.equals(cookie.getName()) && !expired) {
                 csrf = cookie.getValue();
             } else if (SESSION_COOKIE.equals(cookie.getName())) {
-                session = expired ? null : cookie.getValue();
+                sessionCookie = expired ? null : cookie.getValue();
             }
         }
         return result;

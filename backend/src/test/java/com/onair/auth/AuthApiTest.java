@@ -102,7 +102,7 @@ class AuthApiTest extends ApiTestSupport {
         AuthClient client = AuthClient.visitor(mockMvc);
         // 세션 고정 공격처럼 로그인 전에 이미 세션을 가진 상태를 만든다.
         client.login("streamer01", AuthClient.PASSWORD);
-        String before = client.sessionId();
+        String before = client.sessionCookie();
         assertThat(before).isNotNull();
 
         client.login("streamer01", AuthClient.PASSWORD)
@@ -110,7 +110,7 @@ class AuthApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.loginId").value("streamer01"))
                 .andExpect(jsonPath("$.nickname").value("방송러"));
 
-        assertThat(client.sessionId()).isNotEqualTo(before);
+        assertThat(client.sessionCookie()).isNotEqualTo(before);
         client.me().andExpect(status().isOk());
     }
 

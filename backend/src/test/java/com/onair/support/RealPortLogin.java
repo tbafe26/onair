@@ -1,5 +1,6 @@
 package com.onair.support;
 
+import com.onair.auth.AuthClient;
 import com.onair.auth.Csrf;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +26,7 @@ public final class RealPortLogin {
                 .getHeaders()
                 .get(HttpHeaders.SET_COOKIE);
         String session = setCookies.stream()
-                .filter(cookie -> cookie.startsWith("SESSION="))
+                .filter(cookie -> cookie.startsWith(AuthClient.SESSION_COOKIE + "="))
                 .map(cookie -> cookie.substring(0, cookie.indexOf(';')))
                 .findFirst()
                 .orElseThrow();
