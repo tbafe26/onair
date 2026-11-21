@@ -27,7 +27,7 @@ kind: Deployment
 metadata:
   name: backend
 spec:
-  replicas: 2
+  # 파드 수는 HPA(hpa.yaml)가 정한다. 여기에 적으면 kubectl apply 때마다 그 값으로 되돌아간다.
   selector:
     matchLabels:
       app: backend
