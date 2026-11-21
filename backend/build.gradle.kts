@@ -24,6 +24,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-session-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.postgresql:postgresql")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
 
