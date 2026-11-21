@@ -13,7 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
-/** 댓글. 녹화방송 댓글과 (이후의) 라이브방송 채팅이 같은 개념이다. 테이블 이름은 H2 예약어(comment)를 피한다. */
+/** 댓글. 녹화방송 댓글과 (이후의) 라이브방송 채팅이 같은 개념이다. 테이블 이름은 SQL 키워드(comment)를 피한다. */
 @Entity
 @Table(name = "broadcast_comment")
 public class Comment {
