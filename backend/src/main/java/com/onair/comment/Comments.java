@@ -16,8 +16,6 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 댓글 모듈. 저장된 댓글의 규칙(길이, 작성자, 방송별 범위)을 한 곳에 둔다. REST adapter가 이 모듈을 부른다.
@@ -68,23 +66,10 @@ public class Comments implements BroadcastDeletionListener {
         String content = validate(rawContent);
         CommentView view = CommentView.of(comments.save(new Comment(broadcast, author, content, Instant.now(clock))));
         if (broadcast.isChat()) {
-            // 커밋 뒤에 보내야 구독자가 받은 채팅을 곧바로 REST로 읽을 수 있다.
-            afterCommit(() -> chat.publish(broadcastId, view));
+            // 같은 트랜잭션에서 보내 커밋될 때만 전달된다. 구독자가 받은 채팅을 곧바로 REST로 읽을 수 있다.
+            chat.publish(broadcastId, view);
         }
         return view;
-    }
-
-    private static void afterCommit(Runnable action) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    action.run();
-                }
-            });
-        } else {
-            action.run();
-        }
     }
 
     /** 댓글을 지운다. 로그인(401), 방송과 댓글 존재(404, 다른 방송의 댓글 포함), 작성자(403) 순으로 확인한다. */

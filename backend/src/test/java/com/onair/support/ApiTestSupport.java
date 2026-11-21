@@ -25,7 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({TestClockConfig.class, TestPaymentConfig.class})
+@Import({TestClockConfig.class, TestPaymentConfig.class, TestChatRelayConfig.class})
 public abstract class ApiTestSupport {
 
     @Autowired

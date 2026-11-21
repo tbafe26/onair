@@ -295,11 +295,13 @@ public class LiveBroadcasting {
 
     private void finish(long broadcastId) {
         transaction.executeWithoutResult(status ->
-                repository.findLiveByIdForUpdate(broadcastId).ifPresent(live -> live.end(clock.instant())));
+                repository.findLiveByIdForUpdate(broadcastId).ifPresent(live -> {
+                    live.end(clock.instant());
+                    chat.close(broadcastId);
+                }));
         for (Peer viewer : rooms.closeRoom(broadcastId)) {
             viewer.send(SignalMessage.of(SignalMessage.ENDED));
             viewer.close();
         }
-        chat.close(broadcastId);
     }
 }
