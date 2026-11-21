@@ -1,0 +1,30 @@
+# K3s 기본 입구(Traefik).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: onair
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8080
+          - path: /hls
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
