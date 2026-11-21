@@ -44,7 +44,7 @@
 
 | 영역 | 기술 |
 | --- | --- |
-| 백엔드 | ![Java](https://img.shields.io/badge/Java_25-000000?logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot_4-6DB33F?logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring_Security-6DB33F?logo=springsecurity&logoColor=white) ![H2](https://img.shields.io/badge/H2-09476B?logo=h2database&logoColor=white) ![Gradle](https://img.shields.io/badge/Gradle-02303A?logo=gradle&logoColor=white) |
+| 백엔드 | ![Java](https://img.shields.io/badge/Java_25-000000?logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot_4-6DB33F?logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring_Security-6DB33F?logo=springsecurity&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white) ![Gradle](https://img.shields.io/badge/Gradle-02303A?logo=gradle&logoColor=white) |
 | 프런트엔드 | ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white) ![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white) |
 | 실시간 | ![WebRTC](https://img.shields.io/badge/WebRTC-333333?logo=webrtc&logoColor=white) ![WebSocket](https://img.shields.io/badge/WebSocket-010101?logoColor=white) |
 | 결제 | ![Toss Payments](https://img.shields.io/badge/토스페이먼츠_결제위젯-3182F6?logoColor=white) |
@@ -88,12 +88,15 @@
 
 ## 실행 방법
 
-필요 도구: JDK 25, Node.js, pnpm
+필요 도구: JDK 25, Node.js, pnpm, Docker
 
 ```bash
 cd backend
+cp .env.example .env   # 처음 한 번. POSTGRES_PASSWORD를 정합니다
 ./gradlew bootRun
 ```
+
+`bootRun`을 하면 `backend/compose.yaml`의 PostgreSQL 컨테이너가 함께 뜹니다. 백엔드 테스트도 Docker로 PostgreSQL 컨테이너를 띄웁니다.
 
 ```bash
 cd frontend
@@ -105,11 +108,12 @@ PC에서 `http://localhost:5174`로 접속합니다. 휴대폰으로 송출하�
 
 ### 환경변수
 
-모두 선택입니다. 바꿀 때만 `backend/.env.example`을 `backend/.env`로 복사해 고칩니다.
+`backend/.env`(git 제외)에 둡니다. `POSTGRES_PASSWORD` 말고는 모두 선택입니다.
 
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
-| `H2_DB_PATH` | `~/.onair/db/onair` | DB 파일 위치 |
+| `POSTGRES_PASSWORD` | 없음(필수) | 개발용 PostgreSQL 컨테이너의 비밀번호. 이 PC 안에서만 쓰는 값입니다 |
+| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | 개발에서는 `compose.yaml`의 컨테이너 | PostgreSQL 접속 정보. Docker Compose 없이 띄울 때만 줍니다 |
 | `STORAGE_DIR` | `~/.onair/videos` | 영상·썸네일 저장 폴더 |
 | `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
 | `MAX_LIVE_VIEWERS` | `5` | 라이브방송 하나의 동시 시청자 상한 |
