@@ -68,11 +68,26 @@ public final class TwoServers implements AutoCloseable {
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    /** 지금 들고 있는 세션 쿠키 값. 로그아웃 뒤 옛 쿠키로 다시 요청하는 시험에 쓴다. */
+    public String sessionCookie() {
+        return latest("SESSION").orElseThrow(() -> new IllegalStateException("세션 쿠키가 없다"));
+    }
+
+    /** 쿠키 저장소를 거치지 않고, 주어진 세션 쿠키만 실어 보낸다. 브라우저가 지운 쿠키를 공격자가 다시 쓰는 경우다. */
+    public HttpResponse<String> getWithSession(URI uri, String sessionCookie) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(uri).header("Cookie", "SESSION=" + sessionCookie).GET().build();
+        return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
     private String csrfToken() {
-        List<HttpCookie> all = cookies.getCookieStore().getCookies();
-        return all.stream().filter(c -> c.getName().equals("XSRF-TOKEN")).map(HttpCookie::getValue)
-                .reduce((older, newer) -> newer)
+        return latest("XSRF-TOKEN")
                 .orElseThrow(() -> new IllegalStateException("CSRF 토큰 쿠키가 없다. 먼저 GET 요청으로 받아야 한다"));
+    }
+
+    private java.util.Optional<String> latest(String name) {
+        List<HttpCookie> all = cookies.getCookieStore().getCookies();
+        return all.stream().filter(c -> c.getName().equals(name)).map(HttpCookie::getValue)
+                .reduce((older, newer) -> newer);
     }
 
     @Override

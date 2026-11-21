@@ -36,7 +36,11 @@ class SharedSessionTest {
         assertThat(me.statusCode()).isEqualTo(200);
         assertThat(me.body()).contains(loginId);
 
+        String beforeLogout = servers.sessionCookie();
+        assertThat(servers.getWithSession(servers.second("/api/auth/me"), beforeLogout).statusCode()).isEqualTo(200);
         assertThat(servers.post(servers.first("/api/auth/logout"), null).statusCode()).isEqualTo(204);
         assertThat(servers.get(servers.second("/api/auth/me")).statusCode()).isEqualTo(401);
+        // 브라우저는 로그아웃 응답에 따라 쿠키를 지우므로, 서버에서 세션이 지워졌는지는 옛 쿠키를 다시 보내야 알 수 있다.
+        assertThat(servers.getWithSession(servers.second("/api/auth/me"), beforeLogout).statusCode()).isEqualTo(401);
     }
 }
