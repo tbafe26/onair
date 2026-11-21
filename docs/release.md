@@ -16,19 +16,12 @@
   - 릴리스하면 그 줄을 `최신`과 배포일(한국 시간, `YYYY-MM-DD`)로 바꾸고, 직전 `최신`을 `이전`으로 바꾼다.
 - 릴리스 순서
   1. 전체 검증 green과 실제 기기 통합 확인
-  2. 마지막 티켓 PR에 `CHANGELOG.md` 갱신, 백엔드 `version`, 이번 버전의 스키마 스냅샷(아래)을 포함
+  2. 마지막 티켓 PR에 `CHANGELOG.md` 갱신, 백엔드 `version`을 포함
   3. 파이프라인 통과 후 병합
   4. `main`에 annotated 태그(`vX.Y.Z`)를 달고 push
   5. GitHub 릴리스 생성(Latest, 본문은 `CHANGELOG.md`의 해당 버전 절)
   6. 같은 이름의 마일스톤과 단계의 부모 이슈 닫기
 - 4·5번은 원격에 공개되는 작업이므로 실행 전에 사용자 확인을 받는다.
-
-### 스키마 스냅샷
-
-운영 DB는 `ddl-auto=update`로 이전 버전의 파일 DB를 그대로 고쳐 쓰고, 테스트는 매번 빈 DB로 시작한다. 이 차이로 v0.1.0 DB에서 라이브방송을 저장하지 못한 버그가 테스트를 통과했다. 그래서 릴리스마다 그 버전의 스키마를 `backend/src/test/resources/schema/`에 남기고, 업그레이드 테스트가 모든 스냅샷 위에서 앱을 띄워 확인한다. 새 버전을 더하는 방법:
-
-1. 릴리스 태그의 코드로 앱을 빈 H2 파일 DB에 띄워(`H2_DB_PATH`를 임시 경로로) 스키마를 만들고, H2 jar의 `org.h2.tools.Script -options NODATA`로 덤프한다. `CREATE USER` 줄은 지우고, 머리말은 기존 스냅샷 파일을 따른다.
-2. `schema/vX.Y.Z.sql`로 저장하고, `SchemaUpgradeFromV020Test`를 복사해 버전 인자만 바꾼 테스트 클래스를 하나 더한다.
 
 ## CI 파이프라인
 

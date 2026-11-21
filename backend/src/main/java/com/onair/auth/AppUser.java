@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
-/** 사용자. 테이블 이름은 H2 예약어(user)를 피해 app_user다. */
+/** 사용자. 테이블 이름은 SQL 예약어(user)를 피해 app_user다. */
 @Entity
 @Table(name = "app_user")
 public class AppUser {

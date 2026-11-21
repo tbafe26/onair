@@ -1,0 +1,16 @@
+# 개발용 의존 서비스. bootRun을 하면 Spring Boot가 이 파일의 컨테이너를 띄우고 DB 연결 정보를 자동으로 잡는다.
+# 비밀번호는 git에서 제외한 backend/.env의 POSTGRES_PASSWORD에서 읽는다(Docker Compose가 같은 폴더의 .env를 읽음).
+services:
+  postgres:
+    image: postgres:18.7-alpine
+    environment:
+      POSTGRES_DB: onair
+      POSTGRES_USER: onair
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?backend/.env에 POSTGRES_PASSWORD를 넣으세요}
+    ports:
+      - "127.0.0.1::5432"
+    volumes:
+      - onair-postgres:/var/lib/postgresql
+
+volumes:
+  onair-postgres:
