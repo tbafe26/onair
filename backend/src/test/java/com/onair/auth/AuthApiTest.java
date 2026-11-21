@@ -100,8 +100,10 @@ class AuthApiTest extends ApiTestSupport {
     void 로그인하면_200과_내_정보를_돌려주고_세션_id가_바뀐다() throws Exception {
         AuthClient.signedUp(mockMvc, "streamer01", "방송러");
         AuthClient client = AuthClient.visitor(mockMvc);
-        client.me();
+        // 세션 고정 공격처럼 로그인 전에 이미 세션을 가진 상태를 만든다.
+        client.login("streamer01", AuthClient.PASSWORD);
         String before = client.sessionId();
+        assertThat(before).isNotNull();
 
         client.login("streamer01", AuthClient.PASSWORD)
                 .andExpect(status().isOk())
