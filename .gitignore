@@ -17,6 +17,9 @@ id_rsa*
 id_ed25519*
 *.ppk
 
+# 쿠버네티스 Secret 파일(예시 k8s/secret.yaml.example만 올린다)
+k8s/secret.yaml
+
 # 인증 정보가 들어갈 수 있는 로컬 설정
 .npmrc
 .netrc
