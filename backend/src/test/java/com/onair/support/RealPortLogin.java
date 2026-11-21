@@ -25,7 +25,7 @@ public final class RealPortLogin {
                 .getHeaders()
                 .get(HttpHeaders.SET_COOKIE);
         String session = setCookies.stream()
-                .filter(cookie -> cookie.startsWith("JSESSIONID="))
+                .filter(cookie -> cookie.startsWith("SESSION="))
                 .map(cookie -> cookie.substring(0, cookie.indexOf(';')))
                 .findFirst()
                 .orElseThrow();

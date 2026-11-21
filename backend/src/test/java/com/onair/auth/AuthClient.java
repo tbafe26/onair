@@ -4,26 +4,30 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import jakarta.servlet.http.Cookie;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 브라우저 한 대의 흉내. 세션과 CSRF 토큰 쿠키를 들고 있다가 요청마다 실어 보낸다.
+ * 브라우저 한 대의 흉내. 세션 쿠키와 CSRF 토큰 쿠키를 들고 있다가 요청마다 실어 보낸다.
  * 가짜 인증을 주입하지 않고 실제 가입·로그인 요청으로 로그인 상태를 만든다.
  */
 public final class AuthClient {
 
     public static final String PASSWORD = "password-1234";
 
+    /** Spring Session이 세션 id를 싣는 쿠키 이름. */
+    static final String SESSION_COOKIE = "SESSION";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final MockMvc mockMvc;
-    private final MockHttpSession session = new MockHttpSession();
+    private String session;
     private String csrf;
     private long userId;
 
@@ -75,30 +79,39 @@ public final class AuthClient {
         return csrf;
     }
 
+    /** 지금 들고 있는 세션 쿠키 값. 세션이 없으면 null. */
     public String sessionId() {
-        return session.getId();
+        return session;
     }
 
-    /** 세션만 싣는다(읽기 요청). */
+    /** 세션 쿠키만 싣는다(읽기 요청). */
     public RequestPostProcessor session() {
         return request -> {
-            request.setSession(session);
-            request.setRequestedSessionId(session.getId());
+            request.setCookies(cookies(false));
             return request;
         };
     }
 
-    /** 세션과 CSRF 토큰(쿠키와 헤더)을 싣는다(상태를 바꾸는 요청). */
+    /** 세션 쿠키와 CSRF 토큰(쿠키와 헤더)을 싣는다(상태를 바꾸는 요청). */
     public RequestPostProcessor credentials() {
         return request -> {
-            request.setSession(session);
-            request.setRequestedSessionId(session.getId());
+            request.setCookies(cookies(true));
             if (csrf != null) {
-                request.setCookies(new Cookie(Csrf.COOKIE, csrf));
                 request.addHeader(Csrf.HEADER, csrf);
             }
             return request;
         };
+    }
+
+    private Cookie[] cookies(boolean withCsrf) {
+        List<Cookie> cookies = new ArrayList<>();
+        if (session != null) {
+            cookies.add(new Cookie(SESSION_COOKIE, session));
+        }
+        if (withCsrf && csrf != null) {
+            cookies.add(new Cookie(Csrf.COOKIE, csrf));
+        }
+        return cookies.toArray(Cookie[]::new);
     }
 
     private ResultActions rememberUser(ResultActions result) throws Exception {
@@ -110,15 +123,14 @@ public final class AuthClient {
     }
 
     private ResultActions remember(ResultActions result) {
-        // 같은 응답에 토큰 쿠키가 여러 번 실리면 브라우저처럼 마지막 것이 이긴다.
-        Cookie cookie = null;
-        for (Cookie candidate : result.andReturn().getResponse().getCookies()) {
-            if (Csrf.COOKIE.equals(candidate.getName())) {
-                cookie = candidate;
+        // 같은 응답에 같은 쿠키가 여러 번 실리면 브라우저처럼 마지막 것이 이기고, 만료(Max-Age=0)는 지운다.
+        for (Cookie cookie : result.andReturn().getResponse().getCookies()) {
+            boolean expired = cookie.getMaxAge() == 0;
+            if (Csrf.COOKIE.equals(cookie.getName()) && !expired) {
+                csrf = cookie.getValue();
+            } else if (SESSION_COOKIE.equals(cookie.getName())) {
+                session = expired ? null : cookie.getValue();
             }
-        }
-        if (cookie != null && cookie.getMaxAge() != 0) {
-            csrf = cookie.getValue();
         }
         return result;
     }
