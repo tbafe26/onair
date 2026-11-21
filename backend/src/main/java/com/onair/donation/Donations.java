@@ -19,7 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 후원 모듈. 주문 만들기의 규칙(금액, 메시지, 방송 상태, 받는 사람), 결제 승인과 승인 통지의 대조·확정,
@@ -50,9 +52,11 @@ public class Donations implements BroadcastDeletionListener {
     private final PaymentGateway payments;
     private final Clock clock;
     private final LiveChat chat;
+    private final TransactionTemplate transaction;
 
     Donations(DonationRepository donations, BroadcastRepository broadcasts, AppUserRepository users,
-            TossSettings toss, PaymentGateway payments, Clock clock, LiveChat chat) {
+            TossSettings toss, PaymentGateway payments, Clock clock, LiveChat chat,
+            PlatformTransactionManager transactions) {
         this.donations = donations;
         this.broadcasts = broadcasts;
         this.users = users;
@@ -60,6 +64,7 @@ public class Donations implements BroadcastDeletionListener {
         this.payments = payments;
         this.clock = clock;
         this.chat = chat;
+        this.transaction = new TransactionTemplate(transactions);
     }
 
     /** 대기 후원을 만든다. 로그인(401), 방송 존재(404), 입력 규칙(400), 방송 중(409), 자기 방송(403), 결제 설정(503) 순으로 확인한다. */
@@ -154,24 +159,25 @@ public class Donations implements BroadcastDeletionListener {
 
     // 후원을 확정한다. 결제가 확인된 뒤라 대기가 아니어도 확정한다. 이미 다른 요청이 확정했으면 아무것도 바꾸지 않는다.
     private void markConfirmed(Donation donation, String paymentKey) {
-        boolean won;
         try {
-            won = donations.confirmUnlessConfirmed(donation.getId(), paymentKey, Instant.now(clock)) == 1;
+            transaction.executeWithoutResult(status -> {
+                if (donations.confirmUnlessConfirmed(donation.getId(), paymentKey, Instant.now(clock)) == 1) {
+                    try {
+                        publishConfirmed(donation);
+                    } catch (RuntimeException e) {
+                        // 결제는 이미 끝났다. 메시지 때문에 확정을 되돌리지 않는다. 구독자는 다시 접속하면 REST로 읽는다.
+                        log.warn("후원 {} 확정 메시지를 보내지 못했다: {}", donation.getId(), e.getClass().getSimpleName());
+                    }
+                }
+            });
         } catch (DataIntegrityViolationException e) {
             // 같은 결제 키가 다른 후원에 이미 쓰였다.
             throw new DonationNotPayableException();
         }
-        if (won) {
-            try {
-                publishConfirmed(donation);
-            } catch (RuntimeException e) {
-                // 확정은 이미 커밋됐다. 구독자는 다시 접속하면 REST로 읽는다. 로그에는 후원 id만 남긴다.
-                log.warn("후원 {} 확정 메시지를 보내지 못했다: {}", donation.getId(), e.getClass().getSimpleName());
-            }
-        }
     }
 
-    // 조건부 갱신이 이미 커밋된 뒤라서 구독자가 받은 합계를 곧바로 REST로 읽어도 같다. 끝난 방송에는 보내지 않는다.
+    // 확정과 같은 트랜잭션에서 보내 커밋될 때만 전달되고, 구독자가 받은 합계를 곧바로 REST로 읽어도 같다.
+    // 끝난 방송에는 보내지 않는다.
     // 승인과 승인 통지가 모두 markConfirmed를 거치므로, 이긴 요청 하나만 여기까지 온다.
     private void publishConfirmed(Donation pending) {
         long broadcastId = pending.getBroadcast().getId();

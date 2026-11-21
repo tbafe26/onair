@@ -50,12 +50,29 @@ public final class TwoServers implements AutoCloseable {
         return uri(first, path);
     }
 
+    public int firstPort() {
+        return port(first);
+    }
+
+    public int secondPort() {
+        return port(second);
+    }
+
+    /** 서버 1 안의 빈. REST로 만들 수 없는 상황(되돌린 트랜잭션 등)을 만들 때만 쓴다. */
+    public <T> T firstBean(Class<T> type) {
+        return first.getBean(type);
+    }
+
+    private static int port(ConfigurableApplicationContext context) {
+        return Integer.parseInt(context.getEnvironment().getProperty("local.server.port"));
+    }
+
     public URI secondUri(String path) {
         return uri(second, path);
     }
 
     private static URI uri(ConfigurableApplicationContext context, String path) {
-        return URI.create("http://localhost:" + context.getEnvironment().getProperty("local.server.port") + path);
+        return URI.create("http://localhost:" + port(context) + path);
     }
 
     public HttpResponse<String> get(URI uri) throws Exception {
