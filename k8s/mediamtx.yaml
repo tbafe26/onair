@@ -1,0 +1,92 @@
+# 라이브 송출을 WHIP으로 받아 HLS 조각을 공유 볼륨(videos)의 hls 폴더에 쓴다. 백엔드가 그 폴더를 /hls/로 내준다.
+# 송출 연결을 붙잡고 있어 늘리지 않는다(1대).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mediamtx
+spec:
+  replicas: 1
+  # 새 파드가 같은 UDP 포트를 잡기 전에 이전 파드를 내린다.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mediamtx
+  template:
+    metadata:
+      labels:
+        app: mediamtx
+    spec:
+      containers:
+        - name: mediamtx
+          image: bluenviron/mediamtx:1.21.4
+          imagePullPolicy: Never
+          env:
+            - name: MTX_RTSP
+              value: "no"
+            - name: MTX_RTMP
+              value: "no"
+            - name: MTX_SRT
+              value: "no"
+            # 시청자는 백엔드에서 파일을 받으므로, 미디어 서버에 요청이 없어도 HLS 조각을 계속 쓴다.
+            - name: MTX_HLSALWAYSREMUX
+              value: "yes"
+            - name: MTX_HLSVARIANT
+              value: fmp4
+            - name: MTX_HLSSEGMENTDURATION
+              value: 1s
+            - name: MTX_HLSDIRECTORY
+              value: /hls
+            # 송출 키 확인은 백엔드에 묻는다. 입구가 넘기지 않는 경로라 클러스터 안에서만 부른다.
+            - name: MTX_AUTHMETHOD
+              value: http
+            - name: MTX_AUTHHTTPADDRESS
+              value: http://backend:8080/internal/media/auth
+            # 브라우저가 파드 주소 대신 이 PC의 포트(k3d가 8189/udp를 연결)로 영상을 보내게 한다.
+            - name: MTX_WEBRTCADDITIONALHOSTS
+              value: 127.0.0.1
+          ports:
+            - containerPort: 8889
+            - containerPort: 8189
+              protocol: UDP
+          # 송출 1개에 CPU 약 11%, 메모리 약 27MB를 쓴다(측정값).
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: videos
+              mountPath: /hls
+              subPath: hls
+      volumes:
+        - name: videos
+          persistentVolumeClaim:
+            claimName: videos
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mediamtx
+spec:
+  selector:
+    app: mediamtx
+  ports:
+    - name: whip
+      port: 8889
+---
+# WebRTC 영상(UDP)은 HTTP가 아니라 입구를 거치지 못한다. K3s의 기본 LoadBalancer로 노드의 8189/udp에 연다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mediamtx-webrtc
+spec:
+  type: LoadBalancer
+  selector:
+    app: mediamtx
+  ports:
+    - name: webrtc
+      port: 8189
+      protocol: UDP

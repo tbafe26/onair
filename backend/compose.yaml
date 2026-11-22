@@ -12,5 +12,31 @@ services:
     volumes:
       - onair-postgres:/var/lib/postgresql
 
+  # 라이브 송출을 WHIP으로 받아 HLS 조각을 HLS_DIR에 쓴다. 백엔드가 그 폴더를 /hls/로 내준다.
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.4
+    environment:
+      MTX_RTSP: "no"
+      MTX_RTMP: "no"
+      MTX_SRT: "no"
+      # 시청자는 미디어 서버가 아니라 백엔드에서 파일을 받으므로, 요청이 없어도 HLS 조각을 계속 쓴다.
+      MTX_HLSALWAYSREMUX: "yes"
+      MTX_HLSVARIANT: fmp4
+      MTX_HLSSEGMENTDURATION: 1s
+      MTX_HLSDIRECTORY: /hls
+      # 송출 키 확인은 백엔드에 묻는다.
+      MTX_AUTHMETHOD: http
+      MTX_AUTHHTTPADDRESS: http://host.docker.internal:8080/internal/media/auth
+      # 브라우저가 컨테이너 내부 주소 대신 이 PC의 포트로 영상을 보내게 한다.
+      MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1
+    # Docker Desktop이 아닌 Linux Docker에서도 host.docker.internal이 이 PC를 가리키게 한다.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8889:8889"
+      - "127.0.0.1:8189:8189/udp"
+    volumes:
+      - ${HLS_DIR:-~/.onair/hls}:/hls
+
 volumes:
   onair-postgres:
