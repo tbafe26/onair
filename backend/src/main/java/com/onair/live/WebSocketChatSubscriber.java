@@ -9,33 +9,24 @@ import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * WebSocket 세션을 감싼 연결. 시그널링(Peer)과 채팅(ChatSubscriber)이 같이 쓴다.
+ * WebSocket 세션을 감싼 채팅 구독자.
  * 한 세션에 여러 스레드가 동시에 보내지 않도록 전송을 세션 단위로 직렬화한다.
  */
-final class WebSocketPeer implements Peer, ChatSubscriber {
+final class WebSocketChatSubscriber implements ChatSubscriber {
 
     private final WebSocketSession session;
     private final JsonMapper json;
 
-    WebSocketPeer(WebSocketSession session, JsonMapper json) {
+    WebSocketChatSubscriber(WebSocketSession session, JsonMapper json) {
         this.session = session;
         this.json = json;
     }
 
     @Override
-    public void send(SignalMessage message) {
-        write(message.type(), message.fields());
-    }
-
-    @Override
     public void send(ChatMessage message) {
-        write(message.type(), message.fields());
-    }
-
-    private void write(String type, Map<String, Object> fields) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("type", type);
-        body.putAll(fields);
+        body.put("type", message.type());
+        body.putAll(message.fields());
         String payload = json.writeValueAsString(body);
         synchronized (session) {
             try {

@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 미디어 서버(MediaMTX)의 HTTP 인증을 송출 모듈에 넘기는 adapter. 2xx면 허용, 그 밖에는 거절이다.
+ * 미디어 서버(MediaMTX)의 HTTP 인증을 라이브방송 모듈에 넘기는 adapter. 2xx면 허용, 그 밖에는 거절이다.
  * 입구(Ingress)와 개발 서버 프록시가 넘기지 않는 경로라 바깥에서는 부를 수 없다.
  */
 @RestController

@@ -50,8 +50,8 @@ public class LiveChat {
     public void subscribe(long broadcastId, ChatSubscriber subscriber) {
         // 먼저 등록하고 나중에 상태를 읽는다. 읽는 사이에 방송이 끝나도 close나 아래 확인 중 한쪽이 ended를 보낸다.
         // 전역 잠금이 없으므로 DB 읽기와 전송이 다른 방송의 채팅을 막지 않는다.
-        subscribers.compute(broadcastId, (id, peers) -> {
-            Set<ChatSubscriber> set = peers == null ? new CopyOnWriteArraySet<>() : peers;
+        subscribers.compute(broadcastId, (id, current) -> {
+            Set<ChatSubscriber> set = current == null ? new CopyOnWriteArraySet<>() : current;
             set.add(subscriber);
             return set;
         });
@@ -72,9 +72,9 @@ public class LiveChat {
     /** 구독자를 표에서 뺀다. 이 호출이 뺐을 때만 true라서, 종료 알림을 보낼 책임이 한 곳에만 생긴다. */
     private boolean release(long broadcastId, ChatSubscriber subscriber) {
         boolean[] released = {false};
-        subscribers.computeIfPresent(broadcastId, (id, peers) -> {
-            released[0] = peers.remove(subscriber);
-            return peers.isEmpty() ? null : peers;
+        subscribers.computeIfPresent(broadcastId, (id, set) -> {
+            released[0] = set.remove(subscriber);
+            return set.isEmpty() ? null : set;
         });
         return released[0];
     }
@@ -90,7 +90,7 @@ public class LiveChat {
     }
 
     private void sendHere(long broadcastId, ChatMessage message) {
-        // 연결마다 전송이 직렬화되어 있으므로(WebSocketPeer) 여기서는 잠그지 않는다.
+        // 연결마다 전송이 직렬화되어 있으므로(WebSocketChatSubscriber) 여기서는 잠그지 않는다.
         for (ChatSubscriber subscriber : subscribers.getOrDefault(broadcastId, Set.of())) {
             quietly(() -> subscriber.send(message));
         }
@@ -111,11 +111,11 @@ public class LiveChat {
     }
 
     private void closeHere(long broadcastId) {
-        Set<ChatSubscriber> peers = subscribers.remove(broadcastId);
-        if (peers == null) {
+        Set<ChatSubscriber> set = subscribers.remove(broadcastId);
+        if (set == null) {
             return;
         }
-        for (ChatSubscriber subscriber : peers) {
+        for (ChatSubscriber subscriber : set) {
             quietly(() -> subscriber.send(ChatMessage.ended()));
             quietly(subscriber::close);
         }
@@ -124,9 +124,9 @@ public class LiveChat {
     /** 빠진 메시지가 있을 수 있어 이 서버의 구독자를 모두 닫는다. 화면은 다시 접속하며 빠진 채팅을 REST로 읽는다. */
     private void dropAllHere() {
         for (Long broadcastId : subscribers.keySet()) {
-            Set<ChatSubscriber> peers = subscribers.remove(broadcastId);
-            if (peers != null) {
-                peers.forEach(subscriber -> quietly(subscriber::close));
+            Set<ChatSubscriber> set = subscribers.remove(broadcastId);
+            if (set != null) {
+                set.forEach(subscriber -> quietly(subscriber::close));
             }
         }
     }

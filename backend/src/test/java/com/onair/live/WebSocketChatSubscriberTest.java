@@ -17,7 +17,7 @@ import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.json.JsonMapper;
 
 /** 한 연결에 여러 스레드가 동시에 보내도 세션에는 한 번에 하나씩만 쓰는지 확인한다. */
-class WebSocketPeerTest {
+class WebSocketChatSubscriberTest {
 
     @Test
     void 여러_스레드가_동시에_보내도_세션에는_한_번에_하나씩만_쓴다() throws Exception {
@@ -33,7 +33,7 @@ class WebSocketPeerTest {
             sent.incrementAndGet();
             return null;
         }).when(session).sendMessage(any(TextMessage.class));
-        Peer peer = new WebSocketPeer(session, JsonMapper.builder().build());
+        ChatSubscriber subscriber = new WebSocketChatSubscriber(session, JsonMapper.builder().build());
 
         int threads = 8;
         int perThread = 10;
@@ -43,7 +43,7 @@ class WebSocketPeerTest {
             pool.submit(() -> {
                 start.await();
                 for (int j = 0; j < perThread; j++) {
-                    peer.send(SignalMessage.of("viewer-count", "count", j));
+                    subscriber.send(ChatMessage.ended());
                 }
                 return null;
             });

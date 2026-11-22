@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.jayway.jsonpath.JsonPath;
 import com.onair.auth.Csrf;
 import com.onair.comment.Comments;
-import com.onair.live.SignalingWebSocketTest.Inbox;
 import com.onair.support.RealPortLogin;
 import com.onair.support.TwoServers;
 import java.net.URI;
@@ -141,7 +140,7 @@ class CrossServerChatTest {
     private static Inbox 구독한다(int port, int id) throws Exception {
         Inbox inbox = new Inbox();
         WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
-        headers.add(HttpHeaders.ORIGIN, SignalingWebSocketTest.DEV_SERVER_ORIGIN);
+        headers.add(HttpHeaders.ORIGIN, Inbox.DEV_SERVER_ORIGIN);
         new StandardWebSocketClient()
                 .execute(inbox, headers, URI.create("ws://localhost:" + port + "/api/broadcasts/" + id + "/chat"))
                 .get(10, TimeUnit.SECONDS);
