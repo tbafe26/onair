@@ -1,4 +1,4 @@
-import { startLiveBroadcast } from '../api/broadcasts'
+import { fetchBroadcast, startLiveBroadcast } from '../api/broadcasts'
 import { fetchComments, postComment } from '../api/comments'
 import { parseChatMessage } from './chat-protocol'
 import { openJsonSocket } from './json-socket'
@@ -7,6 +7,8 @@ import type { BroadcasterDeps } from './broadcaster'
 import { createBrowserPeerConnection } from './peer'
 import { asSignalMessage, type SignalingChannel, type SignalingHandlers } from './signaling-protocol'
 import type { ViewerDeps } from './viewer'
+import { playHls } from './hls-playback'
+import { publishWhip } from './whip'
 
 // 송출 키는 연결한 뒤 첫 메시지로만 보낸다. 주소에는 넣지 않는다.
 function openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel> {
@@ -29,6 +31,7 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
     : undefined,
   startLive: startLiveBroadcast,
   openSignaling,
+  publish: publishWhip,
   createPeerConnection: createBrowserPeerConnection,
   now: () => Date.now(),
   requestWakeLock:
@@ -44,8 +47,10 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
 
 /** 실제 브라우저 API를 시청 모듈에 연결한다. */
 export const browserViewerDeps: ViewerDeps = {
-  openSignaling,
-  createPeerConnection: createBrowserPeerConnection,
+  playlistReady: (url) => fetch(url, { method: 'HEAD', cache: 'no-store' }).then((response) => response.ok),
+  isOnAir: (broadcastId) =>
+    fetchBroadcast(String(broadcastId)).then((broadcast) => broadcast.kind === 'LIVE' && broadcast.status === 'ON_AIR'),
+  play: playHls,
 }
 
 /** 실제 브라우저 API를 채팅 모듈에 연결한다. 채팅 WebSocket은 받기만 하고, 쓰기는 REST로 한다. */

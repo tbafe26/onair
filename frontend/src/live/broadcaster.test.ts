@@ -1,6 +1,6 @@
 import { AxiosError, type AxiosResponse } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
-import { createLiveBroadcaster, type BroadcasterDeps } from './broadcaster'
+import { createLiveBroadcaster, type BroadcasterDeps, PUBLISH_FAILURE_MESSAGE, type Publication } from './broadcaster'
 import { START_FAILURE_MESSAGE } from './signaling-protocol'
 import type { SignalingChannel, SignalingHandlers, SignalMessage } from './signaling-protocol'
 import { createFakePeer, type FakePeer } from '../test/fakePeer'
@@ -22,6 +22,23 @@ function serverRejection(status: number, data: unknown) {
   return new AxiosError('요청 실패', undefined, undefined, undefined, { status, data } as AxiosResponse)
 }
 
+interface FakePublication extends Publication {
+  closed: boolean
+  /** 영상 연결이 복구되지 않을 만큼 끊겼다고 알린다. */
+  fail(): void
+}
+
+function createFakePublication(): FakePublication {
+  let onFailed = () => {}
+  const publication: FakePublication = {
+    closed: false,
+    onFailed: (listener) => void (onFailed = listener),
+    close: () => void (publication.closed = true),
+    fail: () => onFailed(),
+  }
+  return publication
+}
+
 /** 가짜 의존성. 서버 쪽 동작은 testing 객체로 직접 일으킨다. */
 function setup(overrides: Partial<BroadcasterDeps> = {}) {
   const camera = fakeStream()
@@ -31,6 +48,7 @@ function setup(overrides: Partial<BroadcasterDeps> = {}) {
   let handlers: SignalingHandlers | null = null
   const startLive = vi.fn(async () => ({ id: 7, streamKey: 'fake-stream-key' }))
   const release = vi.fn(async () => undefined)
+  const publications: FakePublication[] = []
   const deps: BroadcasterDeps = {
     getUserMedia: vi.fn(async () => camera.stream),
     startLive,
@@ -43,6 +61,11 @@ function setup(overrides: Partial<BroadcasterDeps> = {}) {
       peers.push(peer)
       return peer
     },
+    publish: vi.fn(async () => {
+      const publication = createFakePublication()
+      publications.push(publication)
+      return publication
+    }),
     now: () => 1_000,
     requestWakeLock: vi.fn(async () => ({ release })),
     ...overrides,
@@ -55,6 +78,7 @@ function setup(overrides: Partial<BroadcasterDeps> = {}) {
     close,
     startLive,
     release,
+    publications,
     server: {
       send: (message: SignalMessage) => handlers?.onMessage(message),
       closeConnection: () => handlers?.onClose(),
@@ -593,3 +617,52 @@ async function onAirWith(env: ReturnType<typeof setup>) {
   await started
   return { broadcaster, env }
 }
+
+describe('영상 송출(WHIP)', () => {
+  it('서버가 송출자로 받아들이면 그 방송 id와 송출 키로 카메라 영상을 보낸 뒤 onAir가 된다', async () => {
+    const { broadcaster, env } = await onAir()
+
+    expect(env.deps.publish).toHaveBeenCalledWith(7, 'fake-stream-key', env.camera.stream)
+    expect(broadcaster.state().phase).toBe('onAir')
+  })
+
+  it('영상을 보내지 못하면 시그널링을 닫고 미리보기로 돌아가 이유를 남긴다', async () => {
+    const env = setup({
+      publish: vi.fn(async () => {
+        throw new Error('whip 401')
+      }),
+    })
+    const { broadcaster } = await previewing(env)
+
+    const started = broadcaster.start({ title: '제목', thumbnail: null })
+    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
+    env.server.send({ type: 'joined' })
+    await started
+
+    expect(env.close).toHaveBeenCalled()
+    expect(broadcaster.state()).toMatchObject({
+      phase: 'previewing',
+      startFailure: { kind: 'message', message: PUBLISH_FAILURE_MESSAGE },
+    })
+  })
+
+  it('송출 중 영상 연결이 끊기면 종료를 알리고 카메라를 끄고 ended가 된다', async () => {
+    const { broadcaster, env } = await onAir()
+
+    env.publications[0].fail()
+
+    expect(env.sent.at(-1)).toEqual({ type: 'end' })
+    expect(broadcaster.state()).toEqual({ phase: 'ended', broadcastId: 7 })
+    env.camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
+  })
+
+  it('송출이 끝나거나 화면을 떠나면 영상 연결을 닫는다', async () => {
+    const ended = await onAir()
+    ended.env.server.send({ type: 'ended' })
+    const left = await onAir()
+    left.broadcaster.dispose()
+
+    expect(ended.env.publications[0].closed).toBe(true)
+    expect(left.env.publications[0].closed).toBe(true)
+  })
+})

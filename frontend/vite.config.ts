@@ -41,6 +41,10 @@ export default defineConfig(({ command, mode }) => {
           // /api 아래 WebSocket 업그레이드도 백엔드로 넘긴다.
           ws: true,
         },
+        // 라이브 영상 조각은 백엔드가 내준다.
+        '/hls': env.API_PROXY_TARGET ?? 'http://localhost:8080',
+        // WHIP 송출은 미디어 서버(backend/compose.yaml의 MediaMTX)로 넘긴다.
+        '/live': env.MEDIA_PROXY_TARGET ?? 'http://localhost:8889',
       },
     },
     test: {

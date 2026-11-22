@@ -179,13 +179,13 @@ it('종료된 라이브방송의 상세에서도 채팅을 읽을 수 있다', a
   expect(within(panel).getByText('지난 채팅')).toBeInTheDocument()
 })
 
-it('시청자 상한으로 영상을 볼 수 없어도 채팅은 보고 쓸 수 있다', async () => {
+it('영상을 볼 수 없어도 채팅은 보고 쓸 수 있다', async () => {
   signedInAs()
   const { app, panel } = await openPanel()
 
-  act(() => app.fake.viewer.setState({ phase: 'full' }))
+  act(() => app.fake.viewer.setState({ phase: 'failed', message: '영상을 불러오지 못했습니다.' }))
 
-  expect(await screen.findByText('시청자가 많아 지금은 볼 수 없습니다')).toBeInTheDocument()
+  expect(await screen.findByText('영상을 불러오지 못했습니다.')).toBeInTheDocument()
   expect(await within(panel).findByRole('textbox', { name: '채팅 입력' })).toBeEnabled()
 })
 

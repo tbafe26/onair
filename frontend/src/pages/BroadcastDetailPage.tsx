@@ -148,18 +148,17 @@ function LiveStatusBox({ text, thumbnailUrl }: { text: string; thumbnailUrl: str
 
 /** 방송 중인 라이브방송의 영상 영역. 소리 없이 자동 재생하고, 버튼으로 소리를 켠다. */
 function LiveViewer({ broadcastId, thumbnailUrl }: { broadcastId: number; thumbnailUrl: string | null }) {
-  const viewer = useLiveViewer(broadcastId)
+  const { state: viewer, attach } = useLiveViewer(broadcastId)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [soundOn, setSoundOn] = useState(false)
-  const stream = viewer.phase === 'playing' ? viewer.stream : null
+  const playlistUrl = viewer.phase === 'playing' ? viewer.playlistUrl : null
 
   useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = stream
-  }, [stream])
+    if (playlistUrl && videoRef.current) attach(videoRef.current)
+  }, [playlistUrl, attach])
 
   if (viewer.phase === 'connecting') return <LiveStatusBox text="연결 중…" thumbnailUrl={thumbnailUrl} />
   if (viewer.phase === 'ended') return <LiveStatusBox text={ENDED_TEXT} thumbnailUrl={thumbnailUrl} />
-  if (viewer.phase === 'full') return <LiveStatusBox text="시청자가 많아 지금은 볼 수 없습니다" thumbnailUrl={thumbnailUrl} />
   if (viewer.phase === 'failed') return <LiveStatusBox text={viewer.message} thumbnailUrl={thumbnailUrl} />
   return (
     <div className="relative aspect-video w-full bg-black">

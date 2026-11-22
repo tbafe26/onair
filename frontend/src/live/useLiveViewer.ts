@@ -11,5 +11,6 @@ export function useLiveViewer(broadcastId: number) {
     return () => viewer.dispose()
   }, [viewer])
 
-  return useSyncExternalStore(viewer.subscribe, viewer.state)
+  const state = useSyncExternalStore(viewer.subscribe, viewer.state)
+  return { state, attach: viewer.attach }
 }

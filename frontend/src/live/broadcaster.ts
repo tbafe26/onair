@@ -35,12 +35,23 @@ export type StartFailure = ApiFailure | { kind: 'message'; message: string }
 
 export type { WakeLockHandle }
 
+/** 미디어 서버로 보내는 영상 연결(WHIP). */
+export interface Publication {
+  /** 연결이 복구되지 않을 만큼 끊겼다. */
+  onFailed(listener: () => void): void
+  close(): void
+}
+
+export const PUBLISH_FAILURE_MESSAGE = '영상을 보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.'
+
 export interface BroadcasterDeps {
   /** 보안 컨텍스트가 아니면 카메라를 쓸 수 없으므로 null이다. */
   getUserMedia: ((constraints: MediaStreamConstraints) => Promise<MediaStream>) | null
   /** 라이브방송을 만든다. 요청이 실패하면 그 오류를 그대로 던지고, 송출 모듈이 ApiFailure로 푼다. */
   startLive(input: { title: string; thumbnail: Blob | null }): Promise<{ id: number; streamKey: string }>
   openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel>
+  /** 카메라 영상을 미디어 서버로 보낸다. 송출 키가 그 방송의 것이어야 미디어 서버가 받는다. */
+  publish(broadcastId: number, streamKey: string, stream: MediaStream): Promise<Publication>
   /** 시청자마다 PeerConnection을 만든다. */
   createPeerConnection(): PeerConnectionLike
   now(): number
@@ -101,6 +112,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   // open과 dispose마다 올린다. 늦게 끝난 비동기 작업이 이미 정리된 세션을 건드리지 않게 거른다.
   let generation = 0
   let channel: SignalingChannel | null = null
+  let publication: Publication | null = null
   const keepAlive = createKeepAlive({
     sendHeartbeat: () => channel?.send(heartbeat()),
     intervalMs: HEARTBEAT_INTERVAL_MS,
@@ -179,6 +191,8 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     if (stream) stopTracks(stream)
     keepAlive.stop()
     viewers.closeAll()
+    publication?.close()
+    publication = null
     closeChannel()
     if (pendingEnd) {
       clearTimeout(pendingEnd.timer)
@@ -325,14 +339,36 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       try {
         await joinAsBroadcaster(started.id, started.streamKey)
         if (session !== generation) return
-        set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0, maxViewers: null })
-        keepAlive.start()
       } catch (error) {
         closeChannel()
         if (session !== generation) return
         const message = error instanceof Error && error.message ? error.message : START_FAILURE_MESSAGE
         set({ phase: 'previewing', stream, startFailure: { kind: 'message', message } })
+        return
       }
+      let published: Publication
+      try {
+        published = await deps.publish(started.id, started.streamKey, stream)
+      } catch {
+        // 송출자 연결을 닫으면 서버가 방송을 종료한다. 다시 시작하면 새 방송이 된다.
+        closeChannel()
+        if (session === generation) {
+          set({ phase: 'previewing', stream, startFailure: { kind: 'message', message: PUBLISH_FAILURE_MESSAGE } })
+        }
+        return
+      }
+      if (session !== generation) {
+        published.close()
+        return
+      }
+      publication = published
+      published.onFailed(() => {
+        if (session !== generation || current.phase !== 'onAir') return
+        channel?.send(endBroadcast())
+        finish(current.broadcastId)
+      })
+      set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0, maxViewers: null })
+      keepAlive.start()
     },
 
     end() {
