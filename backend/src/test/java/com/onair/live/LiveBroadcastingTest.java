@@ -18,6 +18,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -44,7 +49,16 @@ class LiveBroadcastingTest extends ApiTestSupport {
     LiveChat chat;
 
     LiveBroadcasting 상한이_있는_모듈(int maxViewers) {
-        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, chat, maxViewers);
+        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, chat, new FakeMediaServer(), maxViewers);
+    }
+
+    LiveBroadcasting 미디어_서버를_넣은_모듈(MediaServer media) {
+        return new LiveBroadcasting(repository, storage, rules, users, transactionManager, clock, chat, media, 5);
+    }
+
+    /** 같은 DB를 쓰는 다른 서버. 방 표와 상태 맞추기 기억은 서버마다 따로다. */
+    LiveBroadcasting 다른_서버() {
+        return 미디어_서버를_넣은_모듈(new FakeMediaServer());
     }
 
     StartedLive 시작한다(String title) {
@@ -532,159 +546,165 @@ class LiveBroadcastingTest extends ApiTestSupport {
         assertThat(onAir.broadcaster().received).isEmpty();
     }
 
-    // --- 생존 신호, 시간 초과, 서버 시작 정리 ---
+    // --- 미디어 서버와 상태 맞추기 ---
 
     @Test
-    void 연락이_30초를_넘기면_방송이_종료되고_송출자와_시청자에게_ended가_가고_연결이_닫힌다() {
-        OnAir onAir = 송출을_시작한다("무응답");
+    void 미디어_서버에_송출이_없는_방송은_30초_유예_뒤_종료되고_송출자와_시청자에게_ended가_간다() {
+        OnAir onAir = 송출을_시작한다("송출 끊김");
         RecordingPeer viewer = new RecordingPeer();
         입장한다(onAir, viewer);
-        Instant joinedAt = clock.instant();
+        long id = onAir.started().broadcastId();
+        Instant firstSeen = clock.instant();
 
-        live.expireSilentBroadcasters(joinedAt.plusSeconds(31));
+        assertThat(live.reconcile(Set.of(), firstSeen)).isEmpty();
+        assertThat(live.reconcile(Set.of(), firstSeen.plusSeconds(30))).isEmpty();
+        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ON_AIR);
 
+        assertThat(live.reconcile(Set.of(), firstSeen.plusSeconds(31))).containsExactly(id);
         LiveBroadcast saved = 저장된_방송(onAir.started());
         assertThat(saved.status()).isEqualTo(LiveStatus.ENDED);
         assertThat(saved.endedAt()).isNotNull();
         assertThat(onAir.broadcaster().last().type()).isEqualTo("ended");
-        assertThat(onAir.broadcaster().closed).isTrue();
         assertThat(viewer.last().type()).isEqualTo("ended");
         assertThat(viewer.closed).isTrue();
     }
 
     @Test
-    void 연락이_30초_안이면_종료되지_않는다() {
-        OnAir onAir = 송출을_시작한다("아직 괜찮음");
+    void 송출이_다시_보이면_유예가_처음부터_다시_시작한다() {
+        StartedLive started = 시작한다("잠깐 끊김");
+        long id = started.broadcastId();
+        Instant t0 = clock.instant();
 
-        live.expireSilentBroadcasters(clock.instant().plusSeconds(29));
-
-        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ON_AIR);
-        assertThat(onAir.broadcaster().received).isEmpty();
-        assertThat(onAir.broadcaster().closed).isFalse();
-    }
-
-    @Test
-    void heartbeat를_받을_때마다_30초가_새로_시작한다() {
-        OnAir onAir = 송출을_시작한다("생존 신호");
-        Instant joinedAt = clock.instant();
-
-        clock.set(joinedAt.plusSeconds(20));
-        live.relay(onAir.broadcaster(), SignalMessage.of("heartbeat"));
-        live.expireSilentBroadcasters(joinedAt.plusSeconds(49));
-        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ON_AIR);
-
-        live.expireSilentBroadcasters(joinedAt.plusSeconds(51));
-        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ENDED);
-    }
-
-    @Test
-    void 송출자가_아닌_연결의_heartbeat는_생존_신호가_아니다() {
-        OnAir onAir = 송출을_시작한다("남의 신호");
-        Instant joinedAt = clock.instant();
-        RecordingPeer viewer = new RecordingPeer();
-        입장한다(onAir, viewer);
-        RecordingPeer stranger = new RecordingPeer();
-
-        clock.set(joinedAt.plusSeconds(25));
-        live.relay(viewer, SignalMessage.of("heartbeat"));
-        live.relay(stranger, SignalMessage.of("heartbeat"));
-        live.expireSilentBroadcasters(joinedAt.plusSeconds(31));
-
-        assertThat(저장된_방송(onAir.started()).status()).isEqualTo(LiveStatus.ENDED);
-    }
-
-    @Test
-    void 송출자가_연결하지_않은_방송은_시작_시각부터_30초_뒤_종료된다() {
-        StartedLive started = 시작한다("연결 못 함");
-        Instant startedAt = 저장된_방송(started).getCreatedAt();
-
-        live.expireSilentBroadcasters(startedAt.plusSeconds(29));
+        live.reconcile(Set.of(), t0);
+        live.reconcile(Set.of(id), t0.plusSeconds(20));
+        live.reconcile(Set.of(), t0.plusSeconds(25));
+        live.reconcile(Set.of(), t0.plusSeconds(55));
         assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ON_AIR);
 
-        live.expireSilentBroadcasters(startedAt.plusSeconds(31));
-        LiveBroadcast saved = 저장된_방송(started);
-        assertThat(saved.status()).isEqualTo(LiveStatus.ENDED);
-        assertThat(saved.endedAt()).isNotNull();
+        live.reconcile(Set.of(), t0.plusSeconds(56));
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ENDED);
     }
 
     @Test
-    void 이미_종료된_방송은_시간_초과로_종료_시각이_바뀌지_않는다() {
+    void 송출_중인_방송은_얼마가_지나도_유지된다() {
+        StartedLive started = 시작한다("계속 송출");
+        Instant t0 = clock.instant();
+
+        live.reconcile(Set.of(started.broadcastId()), t0);
+        live.reconcile(Set.of(started.broadcastId()), t0.plusSeconds(600));
+
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ON_AIR);
+    }
+
+    @Test
+    void 새로_뜬_서버도_송출_중인_방송을_종료하지_않고_처음_본_때부터_유예를_센다() {
+        StartedLive started = 시작한다("서버가 늘어남");
+        Instant t0 = clock.instant().plusSeconds(300);
+        LiveBroadcasting secondServer = 다른_서버();
+
+        secondServer.reconcile(Set.of(started.broadcastId()), t0);
+        secondServer.reconcile(Set.of(), t0.plusSeconds(5));
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ON_AIR);
+
+        secondServer.reconcile(Set.of(), t0.plusSeconds(36));
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ENDED);
+    }
+
+    @Test
+    void 두_서버가_동시에_맞춰도_종료는_한_번만_반영된다() throws Exception {
+        StartedLive started = 시작한다("동시 정리");
+        Instant t0 = clock.instant();
+        LiveBroadcasting secondServer = 다른_서버();
+        live.reconcile(Set.of(), t0);
+        secondServer.reconcile(Set.of(), t0);
+
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            CountDownLatch go = new CountDownLatch(1);
+            Future<List<Long>> first = pool.submit(() -> {
+                go.await();
+                return live.reconcile(Set.of(), t0.plusSeconds(31));
+            });
+            Future<List<Long>> second = pool.submit(() -> {
+                go.await();
+                return secondServer.reconcile(Set.of(), t0.plusSeconds(32));
+            });
+            go.countDown();
+            List<Long> ended = new ArrayList<>(first.get());
+            ended.addAll(second.get());
+
+            assertThat(ended).containsExactly(started.broadcastId());
+        }
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ENDED);
+    }
+
+    @Test
+    void 이미_종료된_방송은_상태_맞추기로_종료_시각이_바뀌지_않는다() {
         OnAir onAir = 송출을_시작한다("이미 종료");
         live.relay(onAir.broadcaster(), SignalMessage.of("end"));
         Instant endedAt = 저장된_방송(onAir.started()).endedAt();
 
-        live.expireSilentBroadcasters(clock.instant().plusSeconds(120));
+        live.reconcile(Set.of(), clock.instant().plusSeconds(1));
+        live.reconcile(Set.of(), clock.instant().plusSeconds(120));
 
         assertThat(저장된_방송(onAir.started()).endedAt()).isEqualTo(endedAt);
     }
 
     @Test
-    void 시간_초과로_종료된_방송에는_다시_연결할_수_없다() {
-        OnAir onAir = 송출을_시작한다("다시 연결 불가");
-        live.expireSilentBroadcasters(clock.instant().plusSeconds(31));
-        RecordingPeer again = new RecordingPeer();
+    void 주기_작업은_미디어_서버의_송출_목록과_현재_시각으로_맞추고_목록을_못_읽으면_아무것도_종료하지_않는다() {
+        StartedLive publishing = 시작한다("송출 중");
+        StartedLive silent = 시작한다("송출 없음");
+        FakeMediaServer media = new FakeMediaServer();
+        media.publishing.add(publishing.broadcastId());
+        LiveBroadcastMaintenance maintenance = new LiveBroadcastMaintenance(live, media, clock);
 
-        JoinResult result = live.joinAsBroadcaster(onAir.started().broadcastId(), onAir.started().streamKey(), owner().userId(), again);
+        maintenance.reconcileWithMediaServer();
+        media.unavailable = true;
+        clock.set(clock.instant().plusSeconds(60));
+        maintenance.reconcileWithMediaServer();
+        assertThat(저장된_방송(silent).status()).isEqualTo(LiveStatus.ON_AIR);
 
-        assertThat(result.rejection()).isEqualTo(JoinResult.Rejection.ENDED);
+        media.unavailable = false;
+        maintenance.reconcileWithMediaServer();
+        assertThat(저장된_방송(silent).status()).isEqualTo(LiveStatus.ENDED);
+        assertThat(저장된_방송(publishing).status()).isEqualTo(LiveStatus.ON_AIR);
     }
 
     @Test
-    void 시간_초과된_방송만_종료하고_연락이_이어진_방송은_그대로_둔다() {
-        OnAir silent = 송출을_시작한다("조용한 방송");
-        Instant joinedAt = clock.instant();
-        clock.set(joinedAt.plusSeconds(20));
-        OnAir alive = 송출을_시작한다("살아 있는 방송");
+    void 소유자가_종료하면_미디어_서버의_송출도_끊는다() {
+        FakeMediaServer media = new FakeMediaServer();
+        LiveBroadcasting module = 미디어_서버를_넣은_모듈(media);
+        StartedLive started = module.start(new StartLiveCommand("끊기", null), owner().userId());
 
-        live.expireSilentBroadcasters(joinedAt.plusSeconds(40));
+        module.endByOwner(started.broadcastId(), owner().userId());
 
-        assertThat(저장된_방송(silent.started()).status()).isEqualTo(LiveStatus.ENDED);
-        assertThat(저장된_방송(alive.started()).status()).isEqualTo(LiveStatus.ON_AIR);
+        assertThat(media.disconnected).containsExactly(started.broadcastId());
     }
 
     @Test
-    void 서버를_시작하면_방송_중으로_남은_라이브방송이_모두_종료된다() {
-        StartedLive first = 시작한다("남은 방송 1");
-        StartedLive second = 시작한다("남은 방송 2");
-        clock.set(clock.instant().plusSeconds(5));
+    void 종료된_방송의_송출이_미디어_서버에_남아_있으면_상태_맞추기가_끊는다() {
+        FakeMediaServer media = new FakeMediaServer();
+        LiveBroadcasting module = 미디어_서버를_넣은_모듈(media);
+        StartedLive ended = module.start(new StartLiveCommand("끊지 못한 송출", null), owner().userId());
+        StartedLive onAir = module.start(new StartLiveCommand("계속 송출", null), owner().userId());
+        media.unavailable = true;
+        module.endByOwner(ended.broadcastId(), owner().userId());
+        media.unavailable = false;
 
-        live.endAllOnAir();
+        module.reconcile(Set.of(ended.broadcastId(), onAir.broadcastId()), clock.instant());
 
-        for (StartedLive started : new StartedLive[] {first, second}) {
-            LiveBroadcast saved = 저장된_방송(started);
-            assertThat(saved.status()).isEqualTo(LiveStatus.ENDED);
-            assertThat(saved.endedAt()).isEqualTo(clock.instant());
-        }
+        assertThat(media.disconnected).containsExactly(ended.broadcastId());
     }
 
     @Test
-    void 서버_시작_정리는_이미_끝난_방송의_종료_시각을_바꾸지_않는다() {
-        OnAir onAir = 송출을_시작한다("먼저 종료");
-        live.relay(onAir.broadcaster(), SignalMessage.of("end"));
-        Instant endedAt = 저장된_방송(onAir.started()).endedAt();
-        clock.set(clock.instant().plusSeconds(100));
+    void 미디어_서버가_응답하지_않아도_소유자_종료는_저장된다() {
+        FakeMediaServer media = new FakeMediaServer();
+        media.unavailable = true;
+        LiveBroadcasting module = 미디어_서버를_넣은_모듈(media);
+        StartedLive started = module.start(new StartLiveCommand("응답 없음", null), owner().userId());
 
-        live.endAllOnAir();
+        module.endByOwner(started.broadcastId(), owner().userId());
 
-        assertThat(저장된_방송(onAir.started()).endedAt()).isEqualTo(endedAt);
-    }
-
-    @Test
-    void 주기_작업은_현재_시각으로_시간_초과를_검사하고_시작_때는_남은_방송을_종료한다() {
-        StartedLive leftover = 시작한다("정리 대상");
-        LiveBroadcastMaintenance maintenance = new LiveBroadcastMaintenance(live, clock);
-
-        clock.set(clock.instant().plusSeconds(10));
-        maintenance.expireSilentBroadcasters();
-        assertThat(저장된_방송(leftover).status()).isEqualTo(LiveStatus.ON_AIR);
-
-        clock.set(clock.instant().plusSeconds(25));
-        maintenance.expireSilentBroadcasters();
-        assertThat(저장된_방송(leftover).status()).isEqualTo(LiveStatus.ENDED);
-
-        StartedLive another = 시작한다("서버 시작 때 남은 방송");
-        maintenance.run(null);
-        assertThat(저장된_방송(another).status()).isEqualTo(LiveStatus.ENDED);
+        assertThat(저장된_방송(started).status()).isEqualTo(LiveStatus.ENDED);
     }
 
     @Test
