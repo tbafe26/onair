@@ -5,6 +5,7 @@ import {
   RECOVER_LIMIT,
   RETRY_INTERVAL_MS,
   RETRY_LIMIT_MS,
+  STALL_LIMIT_MS,
   createLiveViewer,
   playlistUrlOf,
   type HlsPlayback,
@@ -158,6 +159,63 @@ describe('HLS 시청', () => {
     playbacks[0].fail()
 
     await vi.waitFor(() => expect(viewer.state()).toEqual({ phase: 'failed', message: PLAYBACK_FAILURE_MESSAGE }))
+  })
+
+  it.each([
+    ['재생 중인데 시간이 흐르지 않는다', { currentTime: 5, paused: false, readyState: 2 }],
+    ['데이터를 하나도 받지 못해 멈춰 있다', { currentTime: 0, paused: true, readyState: 0 }],
+  ])('영상이 10초 동안 멈춰 있으면(%s) 재생 실패로 보고 방송 상태를 확인한다', async (_case, element) => {
+    vi.useFakeTimers()
+    const isOnAir = vi.fn(async () => true)
+    const { deps, playbacks } = setup({ isOnAir })
+    const viewer = createLiveViewer(deps, 7)
+    const stalled = { ...element } as unknown as HTMLVideoElement
+    viewer.join()
+    await vi.advanceTimersByTimeAsync(0)
+    viewer.attach(stalled)
+
+    await vi.advanceTimersByTimeAsync(STALL_LIMIT_MS - 2000)
+    expect(isOnAir).not.toHaveBeenCalled()
+    isOnAir.mockResolvedValue(false)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(viewer.state()).toEqual({ phase: 'ended' })
+    expect(playbacks[0].destroyed).toBe(true)
+  })
+
+  it('영상이 흐르거나 사용자가 일시정지했으면 멈춘 것으로 보지 않는다', async () => {
+    vi.useFakeTimers()
+    const { deps } = setup()
+    const viewer = createLiveViewer(deps, 7)
+    const flowing = { currentTime: 0, paused: false, readyState: 4 }
+    viewer.join()
+    await vi.advanceTimersByTimeAsync(0)
+    viewer.attach(flowing as unknown as HTMLVideoElement)
+
+    for (let second = 0; second < 15; second++) {
+      flowing.currentTime += 1
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    flowing.paused = true
+    await vi.advanceTimersByTimeAsync(STALL_LIMIT_MS * 2)
+
+    expect(deps.isOnAir).not.toHaveBeenCalled()
+    expect(viewer.state().phase).toBe('playing')
+  })
+
+  it('방송 중이라 실패 문구를 보여 준 뒤에도 3초마다 방송 상태를 확인해 끝나면 ended가 된다', async () => {
+    vi.useFakeTimers()
+    const isOnAir = vi.fn(async () => true)
+    const { deps } = setup({ playlistReady: vi.fn(async () => false), isOnAir })
+    const viewer = createLiveViewer(deps, 7)
+    viewer.join()
+    await vi.advanceTimersByTimeAsync(RETRY_LIMIT_MS + RETRY_INTERVAL_MS)
+    expect(viewer.state()).toEqual({ phase: 'failed', message: NOT_BROADCASTING_MESSAGE })
+
+    isOnAir.mockResolvedValue(false)
+    await vi.advanceTimersByTimeAsync(RETRY_INTERVAL_MS)
+
+    expect(viewer.state()).toEqual({ phase: 'ended' })
   })
 
   it('같은 영상 요소를 다시 붙여도 재생을 하나만 만든다', async () => {
