@@ -116,8 +116,7 @@ PC에서 `http://localhost:5174`로 접속합니다. 휴대폰으로 송출하�
 | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | 개발에서는 `compose.yaml`의 컨테이너 | PostgreSQL 접속 정보. Docker Compose 없이 띄울 때만 줍니다 |
 | `STORAGE_DIR` | `~/.onair/videos` | 영상·썸네일 저장 폴더 |
 | `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
-| `MAX_LIVE_VIEWERS` | `5` | 라이브방송 하나의 동시 시청자 상한 |
-| `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | WebSocket을 받을 화면 주소 |
+| `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | 채팅 WebSocket을 받을 화면 주소 |
 | `TOSS_CLIENT_KEY` | 없음 | 토스페이먼츠 결제위젯 클라이언트 키(`test_gck_…`) |
 | `TOSS_SECRET_KEY` | 없음 | 토스페이먼츠 결제위젯 시크릿 키(`test_gsk_…`) |
 | `TOSS_TEST_CODE` | 없음 | 승인 실패를 재현하는 테스트 코드(예: `REJECT_CARD_PAYMENT`) |
