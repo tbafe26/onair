@@ -1,24 +1,12 @@
-import { fetchBroadcast, startLiveBroadcast } from '../api/broadcasts'
+import { endBroadcast, fetchBroadcast, startLiveBroadcast } from '../api/broadcasts'
 import { fetchComments, postComment } from '../api/comments'
 import { parseChatMessage } from './chat-protocol'
 import { openJsonSocket } from './json-socket'
 import type { ChatDeps } from './chat'
 import type { BroadcasterDeps } from './broadcaster'
-import { createBrowserPeerConnection } from './peer'
-import { asSignalMessage, type SignalingChannel, type SignalingHandlers } from './signaling-protocol'
 import type { ViewerDeps } from './viewer'
 import { playHls } from './hls-playback'
 import { publishWhip } from './whip'
-
-// 송출 키는 연결한 뒤 첫 메시지로만 보낸다. 주소에는 넣지 않는다.
-function openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel> {
-  return openJsonSocket(
-    `/api/broadcasts/${broadcastId}/signal`,
-    asSignalMessage,
-    handlers,
-    '시그널링 서버에 연결하지 못했습니다',
-  )
-}
 
 /** 실제 브라우저 API를 송출 모듈에 연결한다. 서버 주소와 송출 키는 로그에 남기지 않는다. */
 export const browserBroadcasterDeps: BroadcasterDeps = {
@@ -30,9 +18,8 @@ export const browserBroadcasterDeps: BroadcasterDeps = {
     ? () => navigator.mediaDevices.enumerateDevices()
     : undefined,
   startLive: startLiveBroadcast,
-  openSignaling,
+  endLive: endBroadcast,
   publish: publishWhip,
-  createPeerConnection: createBrowserPeerConnection,
   now: () => Date.now(),
   requestWakeLock:
     'wakeLock' in navigator ? () => navigator.wakeLock.request('screen') : undefined,

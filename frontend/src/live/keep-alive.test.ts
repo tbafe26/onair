@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createKeepAlive, type KeepAliveDeps } from './keep-alive'
 
 function setup(overrides: Partial<KeepAliveDeps> = {}) {
@@ -8,61 +8,17 @@ function setup(overrides: Partial<KeepAliveDeps> = {}) {
     releases.push(release)
     return { release }
   })
-  const sendHeartbeat = vi.fn()
   let onVisible = () => {}
   const unwatch = vi.fn()
   const watchVisible = vi.fn((listener: () => void) => {
     onVisible = listener
     return unwatch
   })
-  const keepAlive = createKeepAlive({ sendHeartbeat, intervalMs: 10_000, requestWakeLock, watchVisible, ...overrides })
-  return { keepAlive, sendHeartbeat, requestWakeLock, releases, watchVisible, unwatch, visible: () => onVisible() }
+  const keepAlive = createKeepAlive({ requestWakeLock, watchVisible, ...overrides })
+  return { keepAlive, requestWakeLock, releases, watchVisible, unwatch, visible: () => onVisible() }
 }
 
 describe('연결 유지', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  describe('생존 신호', () => {
-    it('시작하기 전에는 보내지 않고, 시작하면 주기마다 보낸다', () => {
-      const { keepAlive, sendHeartbeat } = setup()
-      vi.advanceTimersByTime(30_000)
-      expect(sendHeartbeat).not.toHaveBeenCalled()
-
-      keepAlive.start()
-      vi.advanceTimersByTime(9_999)
-      expect(sendHeartbeat).not.toHaveBeenCalled()
-      vi.advanceTimersByTime(1)
-      expect(sendHeartbeat).toHaveBeenCalledTimes(1)
-      vi.advanceTimersByTime(20_000)
-      expect(sendHeartbeat).toHaveBeenCalledTimes(3)
-    })
-
-    it('멈추면 더 보내지 않고 타이머도 남지 않는다', () => {
-      const { keepAlive, sendHeartbeat } = setup()
-      keepAlive.start()
-
-      keepAlive.stop()
-      vi.advanceTimersByTime(30_000)
-
-      expect(sendHeartbeat).not.toHaveBeenCalled()
-      expect(vi.getTimerCount()).toBe(0)
-    })
-
-    it('두 번 시작해도 타이머는 하나다', () => {
-      const { keepAlive } = setup()
-
-      keepAlive.start()
-      keepAlive.start()
-
-      expect(vi.getTimerCount()).toBe(1)
-    })
-  })
-
   describe('화면 꺼짐 방지', () => {
     it('시작하면 잠금을 요청하고, 멈추면 푼다', async () => {
       const { keepAlive, requestWakeLock, releases } = setup()
@@ -76,25 +32,25 @@ describe('연결 유지', () => {
       expect(releases[0]).toHaveBeenCalled()
     })
 
-    it('지원하지 않는 브라우저에서도 생존 신호는 보낸다', () => {
-      const { keepAlive, sendHeartbeat } = setup({ requestWakeLock: undefined, watchVisible: undefined })
+    it('지원하지 않는 브라우저에서는 시작과 멈춤이 아무 일도 하지 않는다', () => {
+      const { keepAlive } = setup({ requestWakeLock: undefined, watchVisible: undefined })
 
-      keepAlive.start()
-      vi.advanceTimersByTime(10_000)
-      keepAlive.stop()
-
-      expect(sendHeartbeat).toHaveBeenCalledTimes(1)
+      expect(() => {
+        keepAlive.start()
+        keepAlive.stop()
+      }).not.toThrow()
     })
 
-    it('요청이 거절돼도 생존 신호는 계속 보낸다', async () => {
+    it('요청이 거절돼도 오류 없이 넘어가고, 두 번 시작해도 요청은 한 번이다', async () => {
       const requestWakeLock = vi.fn(async () => Promise.reject(new Error('denied')))
-      const { keepAlive, sendHeartbeat } = setup({ requestWakeLock })
+      const { keepAlive } = setup({ requestWakeLock })
 
       keepAlive.start()
+      keepAlive.start()
       await vi.waitFor(() => expect(requestWakeLock).toHaveBeenCalled())
-      vi.advanceTimersByTime(10_000)
+      keepAlive.stop()
 
-      expect(sendHeartbeat).toHaveBeenCalledTimes(1)
+      expect(requestWakeLock).toHaveBeenCalledTimes(1)
     })
 
     it('화면이 다시 보이면 잠금을 다시 요청하고, 멈추면 구독을 푼다', async () => {

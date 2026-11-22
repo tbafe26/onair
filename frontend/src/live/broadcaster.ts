@@ -1,20 +1,7 @@
-// 송출 모듈. React와 무관하고, 카메라 열기·방송 시작·시그널링 연결은 바깥에서 받는다(deps).
+// 송출 모듈. React와 무관하고, 카메라 열기·방송 시작·종료·영상 송출은 바깥에서 받는다(deps).
 // 실제로는 브라우저 API(browser-deps.ts)를, 테스트에서는 가짜를 넣는다.
 import { decodeFailure, type ApiFailure } from '../api/broadcasts'
 import { createKeepAlive, type WakeLockHandle } from './keep-alive'
-import type { PeerConnectionLike } from './peer'
-import {
-  MessageType,
-  START_FAILURE_MESSAGE,
-  broadcasterRejectionMessage,
-  endBroadcast,
-  heartbeat,
-  joinBroadcaster,
-  parseBroadcasterInbound,
-  type SignalingChannel,
-  type SignalingHandlers,
-} from './signaling-protocol'
-import { createViewerConnections } from './viewer-connections'
 
 export type CameraUnavailableReason = 'denied' | 'notFound' | 'insecure'
 
@@ -29,7 +16,7 @@ export type BroadcasterState =
 
 /**
  * 송출 시작이 실패한 이유. 방송 만들기 요청의 실패는 서버가 알려 준 ApiFailure 그대로이고,
- * 시그널링 단계의 실패(연결, 송출자 거절)는 사용자에게 보여 줄 문구다.
+ * 영상 송출 단계의 실패는 사용자에게 보여 줄 문구다.
  */
 export type StartFailure = ApiFailure | { kind: 'message'; message: string }
 
@@ -49,11 +36,10 @@ export interface BroadcasterDeps {
   getUserMedia: ((constraints: MediaStreamConstraints) => Promise<MediaStream>) | null
   /** 라이브방송을 만든다. 요청이 실패하면 그 오류를 그대로 던지고, 송출 모듈이 ApiFailure로 푼다. */
   startLive(input: { title: string; thumbnail: Blob | null }): Promise<{ id: number; streamKey: string }>
-  openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel>
+  /** 라이브방송을 종료한다. 이미 종료됐어도 성공이다. */
+  endLive(broadcastId: number): Promise<void>
   /** 카메라 영상을 미디어 서버로 보낸다. 송출 키가 그 방송의 것이어야 미디어 서버가 받는다. */
   publish(broadcastId: number, streamKey: string, stream: MediaStream): Promise<Publication>
-  /** 시청자마다 PeerConnection을 만든다. */
-  createPeerConnection(): PeerConnectionLike
   now(): number
   /** 카메라가 둘 이상인지 알아내는 데 쓴다. 지원하지 않거나 실패하면 전환 버튼을 두지 않는다. */
   enumerateDevices?: () => Promise<{ kind: string }[]>
@@ -84,14 +70,11 @@ export interface LiveBroadcaster {
   /** 카메라를 연다. dispose 뒤에 다시 부르면 처음부터 다시 시작한다. */
   open(): void
   start(input: { title: string; thumbnail: Blob | null }): Promise<void>
-  /** 서버가 종료를 확인하면(또는 연결이 끊기면) 카메라를 끄고 ended가 된다. */
+  /** 서버에 종료를 요청하고 카메라를 끈 뒤 ended가 된다. 요청이 실패해도 ended가 된다. */
   end(): Promise<void>
-  /** 화면을 떠난다. 카메라를 끄고 연결을 닫으며, 송출 중이었다면 서버가 연결 끊김으로 방송을 종료한다. */
+  /** 화면을 떠난다. 카메라와 영상 연결을 닫고, 송출 중이었다면 종료를 요청한다. */
   dispose(): void
 }
-
-const END_CONFIRM_TIMEOUT_MS = 5000
-const HEARTBEAT_INTERVAL_MS = 10_000
 const SWITCH_FAILURE_MESSAGE = '카메라를 바꾸지 못했습니다. 이전 카메라로 계속합니다.'
 
 function classifyCameraError(error: unknown): CameraUnavailableReason {
@@ -111,20 +94,12 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
   const listeners = new Set<() => void>()
   // open과 dispose마다 올린다. 늦게 끝난 비동기 작업이 이미 정리된 세션을 건드리지 않게 거른다.
   let generation = 0
-  let channel: SignalingChannel | null = null
   let publication: Publication | null = null
   const keepAlive = createKeepAlive({
-    sendHeartbeat: () => channel?.send(heartbeat()),
-    intervalMs: HEARTBEAT_INTERVAL_MS,
     requestWakeLock: deps.requestWakeLock,
     watchVisible: deps.watchVisible,
   })
-  const viewers = createViewerConnections({
-    createPeerConnection: () => deps.createPeerConnection(),
-    send: (message) => channel?.send(message),
-  })
-  let pendingJoin: { resolve(): void; reject(error: Error): void } | null = null
-  let pendingEnd: { promise: Promise<void>; resolve(): void; timer: ReturnType<typeof setTimeout> } | null = null
+  let pendingEnd: Promise<void> | null = null
 
   function set(next: BroadcasterState) {
     current = next
@@ -160,45 +135,18 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     return 'stream' in state ? state.stream : null
   }
 
-  function handleViewerMessage(message: ReturnType<typeof parseBroadcasterInbound>) {
-    switch (message?.type) {
-      case MessageType.ViewerJoined:
-        if (current.phase === 'onAir' && !viewers.has(message.viewerId)) viewers.add(message.viewerId, current.stream)
-        break
-      case MessageType.ViewerLeft:
-        viewers.remove(message.viewerId)
-        break
-      case MessageType.Answer: {
-        viewers.receiveAnswer(message.viewerId, message.sdp)
-        break
-      }
-      case MessageType.Candidate: {
-        viewers.receiveCandidate(message.viewerId, message.candidate)
-        break
-      }
-    }
+  /** 종료 요청은 실패해도 넘어간다. 영상 연결을 닫으면 서버가 송출이 끊긴 것을 보고 방송을 정리한다. */
+  function requestEnd(broadcastId: number): Promise<void> {
+    return deps.endLive(broadcastId).catch(() => undefined)
   }
 
-  function closeChannel() {
-    const open = channel
-    channel = null
-    open?.close()
-  }
-
-  /** 카메라, 연결 유지, 시청자 연결, 시그널링 채널을 모두 정리한다. finish와 dispose가 함께 쓴다. */
+  /** 카메라, 화면 잠금, 영상 연결을 모두 정리한다. finish와 dispose가 함께 쓴다. */
   function teardown() {
     const stream = streamOf(current)
     if (stream) stopTracks(stream)
     keepAlive.stop()
-    viewers.closeAll()
     publication?.close()
     publication = null
-    closeChannel()
-    if (pendingEnd) {
-      clearTimeout(pendingEnd.timer)
-      pendingEnd.resolve()
-      pendingEnd = null
-    }
   }
 
   /** 송출이 끝났다. 카메라와 마이크를 끄고 ended로 바꾼다. */
@@ -224,48 +172,6 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
       if (session !== generation) return
       set({ phase: 'cameraUnavailable', reason: classifyCameraError(error) })
     }
-  }
-
-  function joinAsBroadcaster(broadcastId: number, streamKey: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      pendingJoin = { resolve, reject }
-      deps
-        .openSignaling(broadcastId, {
-          onMessage(raw) {
-            const message = parseBroadcasterInbound(raw)
-            if (message?.type === MessageType.Joined) {
-              pendingJoin?.resolve()
-              pendingJoin = null
-            } else if (message?.type === MessageType.Rejected) {
-              pendingJoin?.reject(new Error(broadcasterRejectionMessage(message.reason)))
-              pendingJoin = null
-            } else if (message?.type === MessageType.Ended && current.phase === 'onAir') {
-              finish(current.broadcastId)
-            } else if (message?.type === MessageType.ViewerCount && current.phase === 'onAir') {
-              set({ ...current, viewerCount: message.count, maxViewers: message.max ?? current.maxViewers })
-            } else {
-              handleViewerMessage(message)
-            }
-          },
-          onClose() {
-            if (pendingJoin) {
-              pendingJoin.reject(new Error(START_FAILURE_MESSAGE))
-              pendingJoin = null
-            } else if (current.phase === 'onAir') {
-              // 연결이 끊기면 서버가 방송을 종료하므로 화면도 종료로 맞춘다.
-              finish(current.broadcastId)
-            }
-          },
-        })
-        .then((opened) => {
-          channel = opened
-          opened.send(joinBroadcaster(streamKey))
-        })
-        .catch((error: unknown) => {
-          pendingJoin = null
-          reject(error instanceof Error ? error : new Error(START_FAILURE_MESSAGE))
-        })
-    })
   }
 
   return {
@@ -336,22 +242,11 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         return
       }
       if (session !== generation) return
-      try {
-        await joinAsBroadcaster(started.id, started.streamKey)
-        if (session !== generation) return
-      } catch (error) {
-        closeChannel()
-        if (session !== generation) return
-        const message = error instanceof Error && error.message ? error.message : START_FAILURE_MESSAGE
-        set({ phase: 'previewing', stream, startFailure: { kind: 'message', message } })
-        return
-      }
       let published: Publication
       try {
         published = await deps.publish(started.id, started.streamKey, stream)
       } catch {
-        // 송출자 연결을 닫으면 서버가 방송을 종료한다. 다시 시작하면 새 방송이 된다.
-        closeChannel()
+        await requestEnd(started.id)
         if (session === generation) {
           set({ phase: 'previewing', stream, startFailure: { kind: 'message', message: PUBLISH_FAILURE_MESSAGE } })
         }
@@ -362,9 +257,10 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         return
       }
       publication = published
+      // 다른 곳에서 종료돼 미디어 서버가 송출을 끊은 경우도 여기로 온다.
       published.onFailed(() => {
-        if (session !== generation || current.phase !== 'onAir') return
-        channel?.send(endBroadcast())
+        if (session !== generation || current.phase !== 'onAir' || pendingEnd) return
+        void requestEnd(current.broadcastId)
         finish(current.broadcastId)
       })
       set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0, maxViewers: null })
@@ -372,23 +268,22 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
     },
 
     end() {
-      if (pendingEnd) return pendingEnd.promise
-      if (current.phase !== 'onAir' || !channel) return Promise.resolve()
+      if (pendingEnd) return pendingEnd
+      if (current.phase !== 'onAir') return Promise.resolve()
       const { broadcastId } = current
-      let resolve = () => {}
-      const promise = new Promise<void>((done) => {
-        resolve = done
+      const session = generation
+      pendingEnd = requestEnd(broadcastId).then(() => {
+        pendingEnd = null
+        if (session === generation) finish(broadcastId)
       })
-      const timer = setTimeout(() => finish(broadcastId), END_CONFIRM_TIMEOUT_MS)
-      pendingEnd = { promise, resolve, timer }
-      channel.send(endBroadcast())
-      return promise
+      return pendingEnd
     },
 
     dispose() {
+      if (current.phase === 'onAir' && !pendingEnd) void requestEnd(current.broadcastId)
       generation += 1
       teardown()
-      pendingJoin = null
+      pendingEnd = null
       current = { phase: 'requestingCamera' }
       camera = initialCamera
     },
