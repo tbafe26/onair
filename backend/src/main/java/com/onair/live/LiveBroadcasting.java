@@ -180,6 +180,15 @@ public class LiveBroadcasting {
         }
     }
 
+    /** 미디어 서버가 송출을 받기 전에 묻는다. 방송 중인 라이브방송에 그 방송의 송출 키로 보낼 때만 true다. */
+    public boolean acceptsPublish(long broadcastId, String streamKey) {
+        return Boolean.TRUE.equals(transaction.execute(status -> repository.findById(broadcastId)
+                .filter(LiveBroadcast.class::isInstance)
+                .map(LiveBroadcast.class::cast)
+                .map(live -> live.isOnAir() && live.matchesStreamKey(streamKey))
+                .orElse(false)));
+    }
+
     /**
      * 소유자의 요청으로 방송 중인 라이브방송을 종료한다. 로그인(401), 방송 존재(404), 소유자(403), 라이브방송(409) 순으로 확인한다.
      * 이미 종료됐으면 아무 일도 하지 않는다. 종료하면 시청자와 송출자에게 ended를 보내고 연결을 닫는다.
