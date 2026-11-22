@@ -1,44 +1,43 @@
-// 시청 모듈. React와 무관하고, 시그널링 연결과 PeerConnection 생성은 바깥에서 받는다(deps).
-import type { PeerConnectionLike } from './peer'
-import {
-  MessageType,
-  VIEW_FAILURE_MESSAGE,
-  VIEW_NOT_BROADCASTING_MESSAGE,
-  answerFromViewer,
-  candidateFromViewer,
-  joinViewer,
-  parseViewerInbound,
-  viewerRejection,
-  type SignalingChannel,
-  type SignalingHandlers,
-  type SignalMessage,
-} from './signaling-protocol'
+// 시청 모듈. React와 무관하고, 재생 목록 확인·방송 상태 확인·HLS 재생은 바깥에서 받는다(deps).
+// 미디어 서버가 쓴 HLS 재생 목록을 백엔드가 /hls/로 내주고, 이 모듈은 그것이 준비될 때까지 기다렸다가 재생한다.
 
 export type ViewerState =
   | { phase: 'connecting' }
-  | { phase: 'playing'; stream: MediaStream }
+  | { phase: 'playing'; playlistUrl: string }
   | { phase: 'ended' }
-  | { phase: 'full' }
   /** message는 화면에 그대로 보여 줄 실패 이유다. */
   | { phase: 'failed'; message: string }
 
-type SettledState = Extract<ViewerState, { phase: 'ended' | 'full' | 'failed' }>
+export const PLAYBACK_FAILURE_MESSAGE = '영상을 불러오지 못했습니다. 잠시 뒤 새로고침해 다시 시도해 주세요.'
+export const NOT_BROADCASTING_MESSAGE = '송출이 아직 시작되지 않았습니다. 잠시 뒤 새로고침해 다시 시도해 주세요.'
 
-function failed(message: string): SettledState {
-  return { phase: 'failed', message }
+/** 영상 요소 하나에 붙은 HLS 재생. */
+export interface HlsPlayback {
+  /** 다시 시도해도 이어지지 않을 만큼 재생이 실패했다. */
+  onFatalError(listener: () => void): void
+  destroy(): void
 }
 
 export interface ViewerDeps {
-  openSignaling(broadcastId: number, handlers: SignalingHandlers): Promise<SignalingChannel>
-  createPeerConnection(): PeerConnectionLike
+  /** 재생 목록이 준비됐는지 본다. */
+  playlistReady(url: string): Promise<boolean>
+  isOnAir(broadcastId: number): Promise<boolean>
+  play(video: HTMLVideoElement, url: string): HlsPlayback
   /** 일정 시간 뒤에 callback을 부른다. 돌려주는 함수로 취소한다. 없으면 setTimeout을 쓴다. */
   schedule?: (callback: () => void, delayMs: number) => () => void
 }
 
-/** 송출이 연결되기 전에 들어오면 이 간격으로 다시 접속하고, 이 시간이 지나면 포기한다. */
+/** 방송 시작 직후에는 미디어 서버가 첫 조각을 쓰기 전이라 이 간격으로 다시 보고, 이 시간이 지나면 포기한다. */
 export const RETRY_INTERVAL_MS = 3000
 export const RETRY_LIMIT_MS = 30_000
 const MAX_RETRIES = RETRY_LIMIT_MS / RETRY_INTERVAL_MS
+/** 방송 중인데 재생이 계속 실패하면(예: 이 브라우저가 못 푸는 영상) 이만큼 다시 연결한 뒤 멈춘다. */
+export const RECOVER_LIMIT = 3
+
+/** 미디어 서버의 경로 이름은 live/{방송 id}이고, 백엔드가 그 폴더를 /hls/ 아래로 내준다. */
+export function playlistUrlOf(broadcastId: number) {
+  return `/hls/live/${broadcastId}/index.m3u8`
+}
 
 function defaultSchedule(callback: () => void, delayMs: number) {
   const timer = setTimeout(callback, delayMs)
@@ -50,22 +49,23 @@ export interface LiveViewer {
   subscribe(listener: () => void): () => void
   /** 시청을 시작한다. dispose 뒤에 다시 부르면 처음부터 다시 연결한다. */
   join(): void
-  /** 화면을 떠난다. 연결을 모두 정리한다. */
+  /** playing일 때 영상 요소에 재생을 붙인다. 이미 붙였으면 아무 일도 하지 않는다. */
+  attach(video: HTMLVideoElement): void
+  /** 화면을 떠난다. 재생과 예약한 확인을 모두 정리한다. */
   dispose(): void
 }
 
 export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveViewer {
+  const playlistUrl = playlistUrlOf(broadcastId)
+  const schedule = deps.schedule ?? defaultSchedule
   let current: ViewerState = { phase: 'connecting' }
   const listeners = new Set<() => void>()
-  // join과 dispose마다 올린다. 늦게 도착한 콜백이 이미 정리된 연결을 건드리지 않게 거른다.
+  // join과 dispose마다 올린다. 늦게 끝난 확인이 이미 정리된 시청을 건드리지 않게 거른다.
   let generation = 0
-  let channel: SignalingChannel | null = null
-  let peer: PeerConnectionLike | null = null
+  let playback: HlsPlayback | null = null
   let cancelRetry: (() => void) | null = null
   let retries = 0
-  const schedule = deps.schedule ?? defaultSchedule
-  // 같은 연결에 대한 협상 단계(offer, candidate)를 도착한 순서대로 하나씩 처리한다.
-  let queue: Promise<void> = Promise.resolve()
+  let recoveries = 0
 
   function set(next: ViewerState) {
     current = next
@@ -75,119 +75,68 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
   function teardown() {
     cancelRetry?.()
     cancelRetry = null
-    const openChannel = channel
-    const connection = peer
-    channel = null
-    peer = null
-    queue = Promise.resolve()
-    openChannel?.close()
-    connection?.close()
+    playback?.destroy()
+    playback = null
   }
 
-  /** 끝났거나 실패했다. 연결을 정리하고 해당 상태로 바꾼다. 이미 끝난 뒤에는 바꾸지 않는다. */
-  function settle(next: SettledState) {
-    if (current.phase === 'ended' || current.phase === 'failed' || current.phase === 'full') return
-    teardown()
-    set(next)
+  function check(session: number) {
+    deps
+      .playlistReady(playlistUrl)
+      .catch(() => false)
+      .then((ready) => {
+        if (session !== generation) return
+        if (ready) set({ phase: 'playing', playlistUrl })
+        else retryLater(session)
+      })
   }
 
-  function enqueue(session: number, task: () => Promise<void>) {
-    queue = queue.then(async () => {
-      if (session !== generation) return
-      try {
-        await task()
-      } catch {
-        if (session === generation) settle(failed(VIEW_FAILURE_MESSAGE))
-      }
-    })
-  }
-
-  function connection(session: number): PeerConnectionLike {
-    if (peer) return peer
-    const created = deps.createPeerConnection()
-    peer = created
-    created.onIceCandidate((candidate) => {
-      if (session === generation) channel?.send(candidateFromViewer(candidate))
-    })
-    created.onTrack((stream) => {
-      if (session === generation && current.phase === 'connecting') set({ phase: 'playing', stream })
-    })
-    created.onFailed(() => {
-      if (session === generation) settle(failed(VIEW_FAILURE_MESSAGE))
-    })
-    return created
-  }
-
-  function handle(session: number, raw: SignalMessage) {
-    if (session !== generation) return
-    const message = parseViewerInbound(raw)
-    switch (message?.type) {
-      case MessageType.Offer: {
-        const { sdp } = message
-        enqueue(session, async () => {
-          const pc = connection(session)
-          await pc.setRemoteDescription({ type: 'offer', sdp })
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          channel?.send(answerFromViewer(answer.sdp))
-        })
-        break
-      }
-      case MessageType.Candidate: {
-        const { candidate } = message
-        enqueue(session, async () => {
-          await connection(session).addIceCandidate(candidate)
-        })
-        break
-      }
-      case MessageType.Rejected: {
-        const rejection = viewerRejection(message.reason)
-        if (rejection.action === 'retry') retryLater(session)
-        else settle(rejection.action === 'fail' ? failed(rejection.message) : { phase: rejection.action })
-        break
-      }
-      case MessageType.Ended:
-        settle({ phase: 'ended' })
-        break
-    }
-  }
-
-  /** 송출이 아직 연결되지 않았다. 연결 중으로 둔 채 잠시 뒤 다시 접속하고, 정해진 횟수가 지나면 실패로 본다. */
   function retryLater(session: number) {
-    if (current.phase !== 'connecting') return
     if (retries >= MAX_RETRIES) {
-      settle(failed(VIEW_NOT_BROADCASTING_MESSAGE))
+      void settleByStatus(session, NOT_BROADCASTING_MESSAGE)
       return
     }
     retries += 1
-    const stale = channel
-    channel = null
-    stale?.close()
     cancelRetry = schedule(() => {
       cancelRetry = null
-      if (session === generation) connect(session)
+      if (session === generation) check(session)
     }, RETRY_INTERVAL_MS)
   }
 
-  function connect(session: number) {
-    deps
-      .openSignaling(broadcastId, {
-        onMessage: (message) => handle(session, message),
-        onClose() {
-          if (session === generation) settle(failed(VIEW_FAILURE_MESSAGE))
-        },
-      })
-      .then((opened) => {
-        if (session !== generation) {
-          opened.close()
-          return
-        }
-        channel = opened
-        opened.send(joinViewer())
-      })
-      .catch(() => {
-        if (session === generation) settle(failed(VIEW_FAILURE_MESSAGE))
-      })
+  /** 방송 중인지 묻는다. 묻지 못하면 실패로 두고, 그 사이 다른 연결이 시작됐으면 null이다. */
+  async function checkOnAir(session: number): Promise<boolean | null> {
+    let onAir: boolean
+    try {
+      onAir = await deps.isOnAir(broadcastId)
+    } catch {
+      if (session === generation) set({ phase: 'failed', message: PLAYBACK_FAILURE_MESSAGE })
+      return null
+    }
+    return session === generation ? onAir : null
+  }
+
+  /** 기다리거나 재생하다 막혔다. 방송이 끝났으면 ended, 아직 방송 중이면 message로 실패한다. */
+  async function settleByStatus(session: number, message: string) {
+    const onAir = await checkOnAir(session)
+    if (onAir !== null) set(onAir ? { phase: 'failed', message } : { phase: 'ended' })
+  }
+
+  /** 재생이 실패했다. 방송이 끝났으면 ended, 아직 방송 중이면 처음부터 다시 연결한다. */
+  async function recover(session: number) {
+    teardown()
+    const onAir = await checkOnAir(session)
+    if (onAir === null) return
+    if (!onAir) {
+      set({ phase: 'ended' })
+      return
+    }
+    if (recoveries >= RECOVER_LIMIT) {
+      set({ phase: 'failed', message: PLAYBACK_FAILURE_MESSAGE })
+      return
+    }
+    recoveries += 1
+    retries = 0
+    set({ phase: 'connecting' })
+    check(session)
   }
 
   return {
@@ -202,17 +151,25 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
 
     join() {
       generation += 1
-      const session = generation
       teardown()
       retries = 0
+      recoveries = 0
       set({ phase: 'connecting' })
-      connect(session)
+      check(generation)
+    },
+
+    attach(video) {
+      if (current.phase !== 'playing' || playback) return
+      const session = generation
+      playback = deps.play(video, current.playlistUrl)
+      playback.onFatalError(() => {
+        if (session === generation) void recover(session)
+      })
     },
 
     dispose() {
       generation += 1
       teardown()
-      current = { phase: 'connecting' }
     },
   }
 }

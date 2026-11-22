@@ -18,6 +18,7 @@ export interface FakeBroadcaster extends LiveBroadcaster {
 export interface FakeViewer extends LiveViewer {
   setState(state: ViewerState): void
   join: ReturnType<typeof vi.fn<LiveViewer['join']>>
+  attach: ReturnType<typeof vi.fn<LiveViewer['attach']>>
   dispose: ReturnType<typeof vi.fn<LiveViewer['dispose']>>
 }
 
@@ -80,6 +81,7 @@ export function createFakeViewer(): FakeViewer {
     subscribe: state.subscribe,
     setState: state.set,
     join: vi.fn(),
+    attach: vi.fn(),
     dispose: vi.fn(),
   }
 }

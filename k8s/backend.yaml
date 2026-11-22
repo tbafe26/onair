@@ -6,6 +6,8 @@ data:
   SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onair
   SPRING_DATASOURCE_USERNAME: onair
   STORAGE_DIR: /data/videos
+  # 미디어 서버(mediamtx.yaml)가 같은 볼륨의 hls 폴더에 쓴다.
+  HLS_DIR: /data/videos/hls
   # 채팅 WebSocket이 받아들일 화면 주소. 클러스터 입구를 이 PC의 8088 포트로 연다.
   ALLOWED_ORIGINS: http://localhost:8088
   # JVM은 기본으로 컨테이너 메모리의 1/4만 힙으로 쓴다. 나머지는 메타스페이스·스레드 몫으로 남긴다.

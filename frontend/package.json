@@ -19,6 +19,7 @@
     "axios": "^1.21.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hls.js": "^1.7.4",
     "lucide-react": "^1.68.0",
     "pretendard": "^1.3.9",
     "react": "^19.3.1",

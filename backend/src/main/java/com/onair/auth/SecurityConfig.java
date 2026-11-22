@@ -84,6 +84,9 @@ class SecurityConfig {
                         // 결제 서비스가 서버끼리 보내는 통지라 쿠키 기반 CSRF 대상이 아니다. 이 주소만 뺀다.
                         .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
                                 .matcher(HttpMethod.POST, "/api/payments/toss/notifications"))
+                        // 미디어 서버가 송출 인증을 묻는 서버끼리의 요청이다.
+                        .ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
+                                .matcher(HttpMethod.POST, "/internal/media/auth"))
                         .csrfTokenRepository(csrfTokens)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)

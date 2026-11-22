@@ -21,6 +21,14 @@ spec:
                 name: backend
                 port:
                   number: 8080
+          # WHIP 송출(/live/{방송 id}/whip)은 미디어 서버로.
+          - path: /live
+            pathType: Prefix
+            backend:
+              service:
+                name: mediamtx
+                port:
+                  number: 8889
           - path: /
             pathType: Prefix
             backend:

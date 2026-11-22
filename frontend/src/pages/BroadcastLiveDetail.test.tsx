@@ -4,7 +4,6 @@ import { http, HttpResponse } from 'msw'
 import { expect, it } from 'vitest'
 import type { ViewerState } from '../live/viewer'
 import { signedInAs } from '../test/auth'
-import { fakeStream } from '../test/fakeLive'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
@@ -133,14 +132,15 @@ async function openOnAir() {
 
 async function startPlaying() {
   const app = await openOnAir()
-  setViewer(app, { phase: 'playing', stream: fakeStream() })
+  setViewer(app, { phase: 'playing', playlistUrl: '/hls/live/5/index.m3u8' })
   return app
 }
 
 it('영상이 오면 소리 없이 자동 재생되는 영상과 소리 켜기 버튼이 보이고 재생 막대는 없다', async () => {
-  await startPlaying()
+  const app = await startPlaying()
 
   const video = await screen.findByLabelText<HTMLVideoElement>('라이브 영상')
+  expect(app.fake.viewer.attach).toHaveBeenCalledWith(video)
   expect(video.muted).toBe(true)
   expect(video.autoplay).toBe(true)
   expect(video.playsInline).toBe(true)
@@ -166,15 +166,6 @@ it('시청 중 송출이 끝나면 영상 자리에 종료 문구가 나온다',
   setViewer(app, { phase: 'ended' })
 
   expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
-  expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
-})
-
-it('시청자가 가득 찼으면 상한 안내 문구가 나온다', async () => {
-  const app = await openOnAir()
-
-  setViewer(app, { phase: 'full' })
-
-  expect(await screen.findByText('시청자가 많아 지금은 볼 수 없습니다')).toBeInTheDocument()
   expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
 })
 
