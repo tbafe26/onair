@@ -45,8 +45,18 @@ spec:
             # 브라우저가 파드 주소 대신 이 PC의 포트(k3d가 8189/udp를 연결)로 영상을 보내게 한다.
             - name: MTX_WEBRTCADDITIONALHOSTS
               value: 127.0.0.1
+            # 연결 뒤 첫 영상 패킷이 2초(기본값) 넘게 걸리면 송출을 끊는다. k3d의 UDP 경로에서 3초 걸린 적이 있어 늘린다.
+            - name: MTX_WEBRTCTRACKGATHERTIMEOUT
+              value: 10s
+            # 백엔드가 5초마다 송출 목록을 읽고, 소유자가 종료하면 송출을 끊는다.
+            # 송출 키 확인(위의 http 인증)에서 제어 API는 빼므로, API 포트는 입구에 연결하지 않는다.
+            - name: MTX_API
+              value: "yes"
+            - name: MTX_AUTHHTTPEXCLUDE_0_ACTION
+              value: api
           ports:
             - containerPort: 8889
+            - containerPort: 9997
             - containerPort: 8189
               protocol: UDP
           # 송출 1개에 CPU 약 11%, 메모리 약 27MB를 쓴다(측정값).
@@ -76,6 +86,8 @@ spec:
   ports:
     - name: whip
       port: 8889
+    - name: api
+      port: 9997
 ---
 # WebRTC 영상(UDP)은 HTTP가 아니라 입구를 거치지 못한다. K3s의 기본 LoadBalancer로 노드의 8189/udp에 연다.
 apiVersion: v1
