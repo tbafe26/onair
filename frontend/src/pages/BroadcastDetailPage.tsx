@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { broadcastKeys } from '../api/broadcast-keys'
@@ -103,6 +103,7 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
 function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
   const { state } = useAuth()
   const { onAir } = viewBroadcast(data, state)
+  const queryClient = useQueryClient()
   return (
     <div className="-mx-5 -mt-8 flex flex-col lg:flex-row lg:items-start">
       <section className="min-w-0 flex-1">
@@ -123,6 +124,7 @@ function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
           key={data.id}
           broadcastId={data.id}
           recipient={onAir ? data.owner : undefined}
+          onEnded={() => void queryClient.invalidateQueries({ queryKey: broadcastKeys.detail(String(data.id)) })}
           className="h-[26rem] lg:h-[34rem]" />
         <MoreBroadcastsPanel currentId={data.id} />
       </div>

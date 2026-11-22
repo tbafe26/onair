@@ -8,6 +8,7 @@ import com.onair.broadcast.StartLiveCommand;
 import com.onair.comment.CommentView;
 import com.onair.comment.Comments;
 import com.onair.support.ApiTestSupport;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
@@ -107,12 +108,13 @@ class LiveChatTest extends ApiTestSupport {
     }
 
     @Test
-    void 하트비트가_끊겨_방송이_정리돼도_구독자는_ended를_받는다() {
+    void 송출이_끊겨_상태_맞추기로_종료돼도_구독자는_ended를_받는다() {
         long id = 방송을_시작한다();
         RecordingSubscriber subscriber = new RecordingSubscriber();
         chat.subscribe(id, subscriber);
 
-        live.expireSilentBroadcasters(clock.instant().plus(LiveBroadcasting.SILENCE_LIMIT).plusSeconds(1));
+        live.reconcile(Set.of(), clock.instant());
+        live.reconcile(Set.of(), clock.instant().plus(LiveBroadcasting.PUBLISH_GRACE).plusSeconds(1));
 
         assertThat(subscriber.types()).containsExactly("ended");
         assertThat(subscriber.closed).isTrue();

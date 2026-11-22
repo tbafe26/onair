@@ -240,3 +240,19 @@ it('비로그인 상태의 방송 중 상세에는 송출 종료 버튼이 없�
   await screen.findByRole('heading', { name: '상세 라이브' })
   expect(screen.queryByRole('button', { name: '송출 종료' })).not.toBeInTheDocument()
 })
+
+it('채팅이 방송 종료를 알리면 방송 정보를 다시 읽어 종료 안내와 종료 시각을 보여 주고 시청을 정리한다', async () => {
+  stubLive('ON_AIR', null)
+  const app = renderApp('/broadcasts/5')
+  await screen.findByRole('heading', { name: '상세 라이브' })
+  setViewer(app, { phase: 'playing', playlistUrl: '/hls/live/5/index.m3u8' })
+  expect(await screen.findByLabelText('라이브 영상')).toBeInTheDocument()
+  stubLive('ENDED', '2026-03-15T13:30:00Z')
+
+  act(() => app.fake.chat.setState({ phase: 'ended', comments: [], donations: [] }))
+
+  expect(await screen.findByText('방송이 종료되었습니다')).toBeInTheDocument()
+  expect(screen.getByText(/^종료/)).toBeInTheDocument()
+  expect(screen.queryByLabelText('라이브 영상')).not.toBeInTheDocument()
+  expect(app.fake.viewer.dispose).toHaveBeenCalled()
+})

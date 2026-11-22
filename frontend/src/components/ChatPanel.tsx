@@ -22,16 +22,27 @@ const STICK_THRESHOLD = 40
 export function ChatPanel({
   broadcastId,
   recipient,
+  onEnded,
   className,
 }: {
   broadcastId: number
   /** 후원을 받을 소유자. 후원할 수 있는 화면(방송 중인 라이브방송 시청)에서만 넘기며, 있으면 입력창 옆에 후원 버튼이 생긴다. */
   recipient?: { id: number; nickname: string }
+  /** 방송이 끝났다는 알림을 받으면 부른다. */
+  onEnded?: () => void
   className?: string
 }) {
   const { state, send, retry, onReconnected } = useLiveChat(broadcastId)
   const [donating, setDonating] = useState(false)
   useDonationEvents(broadcastId, state, onReconnected)
+  const onEndedRef = useRef(onEnded)
+  useLayoutEffect(() => {
+    onEndedRef.current = onEnded
+  })
+  const ended = state.phase === 'ended'
+  useEffect(() => {
+    if (ended) onEndedRef.current?.()
+  }, [ended])
 
   return (
     <section

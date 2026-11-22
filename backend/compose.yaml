@@ -29,12 +29,19 @@ services:
       MTX_AUTHHTTPADDRESS: http://host.docker.internal:8080/internal/media/auth
       # 브라우저가 컨테이너 내부 주소 대신 이 PC의 포트로 영상을 보내게 한다.
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1
+      # 연결 뒤 첫 영상 패킷이 2초(기본값) 넘게 걸리면 송출을 끊는다. Docker를 거친 UDP에서 3초 걸린 적이 있어 늘린다.
+      MTX_WEBRTCTRACKGATHERTIMEOUT: 10s
+      # 백엔드가 5초마다 송출 목록을 읽고, 소유자가 종료하면 송출을 끊는다.
+      # 송출 키 확인(위의 http 인증)에서 제어 API는 빼므로, API 포트는 이 PC에만 연다.
+      MTX_API: "yes"
+      MTX_AUTHHTTPEXCLUDE_0_ACTION: api
     # Docker Desktop이 아닌 Linux Docker에서도 host.docker.internal이 이 PC를 가리키게 한다.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8889:8889"
       - "127.0.0.1:8189:8189/udp"
+      - "127.0.0.1:9997:9997"
     volumes:
       - ${HLS_DIR:-~/.onair/hls}:/hls
 

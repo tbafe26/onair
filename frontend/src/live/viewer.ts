@@ -33,6 +33,14 @@ export const RETRY_LIMIT_MS = 30_000
 const MAX_RETRIES = RETRY_LIMIT_MS / RETRY_INTERVAL_MS
 /** 방송 중인데 재생이 계속 실패하면(예: 이 브라우저가 못 푸는 영상) 이만큼 다시 연결한 뒤 멈춘다. */
 export const RECOVER_LIMIT = 3
+/**
+ * 송출이 끊기면 미디어 서버는 조각만 지우고 재생 목록은 남겨, 재생기가 오류 없이 새 조각을 기다리기만 할 수 있다.
+ * 사용자가 일시정지한 것이 아닌데 영상이 이만큼 멈춰 있으면 재생 실패로 보고 방송 상태를 확인한다.
+ */
+export const STALL_LIMIT_MS = 10_000
+const STALL_CHECK_MS = 2000
+// HTMLMediaElement.HAVE_CURRENT_DATA. 브라우저 밖(테스트)에서도 쓰도록 값으로 둔다.
+const HAVE_CURRENT_DATA = 2
 
 /** 미디어 서버의 경로 이름은 live/{방송 id}이고, 백엔드가 그 폴더를 /hls/ 아래로 내준다. */
 export function playlistUrlOf(broadcastId: number) {
@@ -64,6 +72,7 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
   let generation = 0
   let playback: HlsPlayback | null = null
   let cancelRetry: (() => void) | null = null
+  let cancelStallWatch: (() => void) | null = null
   let retries = 0
   let recoveries = 0
 
@@ -75,6 +84,8 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
   function teardown() {
     cancelRetry?.()
     cancelRetry = null
+    cancelStallWatch?.()
+    cancelStallWatch = null
     playback?.destroy()
     playback = null
   }
@@ -117,7 +128,51 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
   /** 기다리거나 재생하다 막혔다. 방송이 끝났으면 ended, 아직 방송 중이면 message로 실패한다. */
   async function settleByStatus(session: number, message: string) {
     const onAir = await checkOnAir(session)
-    if (onAir !== null) set(onAir ? { phase: 'failed', message } : { phase: 'ended' })
+    if (onAir === null) return
+    if (onAir) failWhileOnAir(session, message)
+    else set({ phase: 'ended' })
+  }
+
+  /** 실패 문구를 보여 주되, 방송이 끝나면 종료 안내로 바꾸도록 방송 상태를 계속 확인한다. */
+  function failWhileOnAir(session: number, message: string) {
+    if (current.phase !== 'failed' || current.message !== message) set({ phase: 'failed', message })
+    cancelRetry = schedule(() => {
+      cancelRetry = null
+      if (session !== generation) return
+      deps.isOnAir(broadcastId).then(
+        (onAir) => {
+          if (session !== generation) return
+          if (onAir) failWhileOnAir(session, message)
+          else set({ phase: 'ended' })
+        },
+        () => {
+          if (session === generation) failWhileOnAir(session, message)
+        },
+      )
+    }, RETRY_INTERVAL_MS)
+  }
+
+  function watchStall(session: number, video: HTMLVideoElement) {
+    let lastTime = video.currentTime
+    let stalledMs = 0
+    const tick = () => {
+      if (session !== generation || !playback) return
+      // 데이터가 있는 채로 멈춰 있으면 사용자가 일시정지한 것이다. 데이터가 없으면 일시정지여도 막힌 것으로 본다.
+      const pausedByUser = video.paused && video.readyState >= HAVE_CURRENT_DATA
+      if (pausedByUser || video.currentTime !== lastTime) {
+        stalledMs = 0
+        lastTime = video.currentTime
+      } else {
+        stalledMs += STALL_CHECK_MS
+      }
+      if (stalledMs >= STALL_LIMIT_MS) {
+        cancelStallWatch = null
+        void recover(session)
+        return
+      }
+      cancelStallWatch = schedule(tick, STALL_CHECK_MS)
+    }
+    cancelStallWatch = schedule(tick, STALL_CHECK_MS)
   }
 
   /** 재생이 실패했다. 방송이 끝났으면 ended, 아직 방송 중이면 처음부터 다시 연결한다. */
@@ -130,7 +185,7 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
       return
     }
     if (recoveries >= RECOVER_LIMIT) {
-      set({ phase: 'failed', message: PLAYBACK_FAILURE_MESSAGE })
+      failWhileOnAir(session, PLAYBACK_FAILURE_MESSAGE)
       return
     }
     recoveries += 1
@@ -165,6 +220,7 @@ export function createLiveViewer(deps: ViewerDeps, broadcastId: number): LiveVie
       playback.onFatalError(() => {
         if (session === generation) void recover(session)
       })
+      watchStall(session, video)
     },
 
     dispose() {

@@ -481,3 +481,12 @@ it('송출 중에는 후원 영역에 이 방송의 후원 합계와 내역을 �
   expect(within(area).getByText('2건')).toBeInTheDocument()
   expect(within(area).getByText('화이팅')).toBeInTheDocument()
 })
+
+it('송출 중에 채팅이 방송 종료를 알리면(다른 곳에서 종료됨) 송출을 끝낸다', async () => {
+  const app = await openOnAir()
+  expect(app.fake.broadcaster.end).not.toHaveBeenCalled()
+
+  act(() => app.fake.chat.setState({ phase: 'ended', comments: [], donations: [] }))
+
+  await waitFor(() => expect(app.fake.broadcaster.end).toHaveBeenCalledTimes(1))
+})

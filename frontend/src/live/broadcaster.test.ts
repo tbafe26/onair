@@ -1,9 +1,6 @@
 import { AxiosError, type AxiosResponse } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
 import { createLiveBroadcaster, type BroadcasterDeps, PUBLISH_FAILURE_MESSAGE, type Publication } from './broadcaster'
-import { START_FAILURE_MESSAGE } from './signaling-protocol'
-import type { SignalingChannel, SignalingHandlers, SignalMessage } from './signaling-protocol'
-import { createFakePeer, type FakePeer } from '../test/fakePeer'
 
 function fakeStream() {
   const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }]
@@ -39,28 +36,17 @@ function createFakePublication(): FakePublication {
   return publication
 }
 
-/** 가짜 의존성. 서버 쪽 동작은 testing 객체로 직접 일으킨다. */
+/** 가짜 의존성. 미디어 서버 쪽 동작은 publications로 직접 일으킨다. */
 function setup(overrides: Partial<BroadcasterDeps> = {}) {
   const camera = fakeStream()
-  const sent: SignalMessage[] = []
-  const peers: FakePeer[] = []
-  const close = vi.fn()
-  let handlers: SignalingHandlers | null = null
   const startLive = vi.fn(async () => ({ id: 7, streamKey: 'fake-stream-key' }))
+  const endLive = vi.fn<(broadcastId: number) => Promise<undefined>>(async () => undefined)
   const release = vi.fn(async () => undefined)
   const publications: FakePublication[] = []
   const deps: BroadcasterDeps = {
     getUserMedia: vi.fn(async () => camera.stream),
     startLive,
-    openSignaling: vi.fn(async (_id: number, h: SignalingHandlers): Promise<SignalingChannel> => {
-      handlers = h
-      return { send: (message) => void sent.push(message), close }
-    }),
-    createPeerConnection: () => {
-      const peer = createFakePeer()
-      peers.push(peer)
-      return peer
-    },
+    endLive,
     publish: vi.fn(async () => {
       const publication = createFakePublication()
       publications.push(publication)
@@ -70,20 +56,7 @@ function setup(overrides: Partial<BroadcasterDeps> = {}) {
     requestWakeLock: vi.fn(async () => ({ release })),
     ...overrides,
   }
-  return {
-    deps,
-    camera,
-    sent,
-    peers,
-    close,
-    startLive,
-    release,
-    publications,
-    server: {
-      send: (message: SignalMessage) => handlers?.onMessage(message),
-      closeConnection: () => handlers?.onClose(),
-    },
-  }
+  return { deps, camera, startLive, endLive, release, publications }
 }
 
 async function previewing(env = setup()) {
@@ -93,14 +66,13 @@ async function previewing(env = setup()) {
   return { broadcaster, env }
 }
 
-async function onAir() {
-  const { broadcaster, env } = await previewing()
-  const started = broadcaster.start({ title: '제목', thumbnail: null })
-  await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-  env.server.send({ type: 'joined' })
-  await started
+async function onAirWith(env: ReturnType<typeof setup>) {
+  const { broadcaster } = await previewing(env)
+  await broadcaster.start({ title: '제목', thumbnail: null })
   return { broadcaster, env }
 }
+
+const onAir = () => onAirWith(setup())
 
 describe('카메라 열기', () => {
   it('열면 requestingCamera를 거쳐 전면 카메라 1280x720 희망값으로 미리보기가 된다', async () => {
@@ -165,20 +137,15 @@ describe('카메라 열기', () => {
 })
 
 describe('송출 시작', () => {
-  it('시작하면 starting을 거쳐 서버의 joined를 받으면 onAir가 되고, 키는 첫 메시지로 보낸다', async () => {
+  it('시작하면 starting을 거쳐 방송 id와 송출 키로 카메라 영상을 보낸 뒤 onAir가 된다', async () => {
     const { broadcaster, env } = await previewing()
 
     const started = broadcaster.start({ title: '제목', thumbnail: null })
     expect(broadcaster.state().phase).toBe('starting')
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    expect(env.sent[0]).toEqual({ type: 'join-broadcaster', streamKey: 'fake-stream-key' })
-    expect(broadcaster.state().phase).toBe('starting')
-
-    env.server.send({ type: 'joined' })
     await started
 
+    expect(env.deps.publish).toHaveBeenCalledWith(7, 'fake-stream-key', env.camera.stream)
     expect(broadcaster.state()).toMatchObject({ phase: 'onAir', broadcastId: 7, startedAt: 1_000 })
-    expect(env.deps.openSignaling).toHaveBeenCalledWith(7, expect.any(Object))
   })
 
   it('시작하는 동안 다시 시작해도 방송은 한 번만 만든다', async () => {
@@ -186,11 +153,10 @@ describe('송출 시작', () => {
 
     const first = broadcaster.start({ title: '제목', thumbnail: null })
     await broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
     await first
 
     expect(env.startLive).toHaveBeenCalledTimes(1)
+    expect(env.deps.publish).toHaveBeenCalledTimes(1)
   })
 
   it('서버가 입력을 필드별로 거절하면 해독한 ApiFailure를 그대로 상태에 남긴다', async () => {
@@ -231,44 +197,41 @@ describe('송출 시작', () => {
     await broadcaster.start({ title: '제목', thumbnail: null })
 
     expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'unknown' } })
-    const retry = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
-    await retry
+    expect(env.deps.publish).not.toHaveBeenCalled()
+    await broadcaster.start({ title: '제목', thumbnail: null })
     expect(broadcaster.state()).toMatchObject({ phase: 'onAir' })
   })
 
-  it.each([
-    ['not-owner', '이 방송의 소유자만 송출할 수 있습니다. 방송을 시작한 사용자로 로그인해 주세요.'],
-    ['invalid-key', '송출 키가 맞지 않아 송출을 시작하지 못했습니다.'],
-    ['already-broadcasting', '이미 다른 곳에서 송출 중인 방송입니다.'],
-    ['ended', '이미 종료된 방송이라 송출을 시작하지 못했습니다.'],
-    ['not-found', '방송을 찾을 수 없어 송출을 시작하지 못했습니다.'],
-    ['full', START_FAILURE_MESSAGE],
-  ])('서버가 송출자를 %s로 거절하면 미리보기로 돌아가 그 이유를 보여 주고 카메라는 유지한다', async (reason, message) => {
-    const { broadcaster, env } = await previewing()
-
-    const started = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'rejected', reason })
-    await started
-
-    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'message', message } })
-    expect(env.close).toHaveBeenCalled()
-    env.camera.tracks.forEach((track) => expect(track.stop).not.toHaveBeenCalled())
-  })
-
-  it('시그널링에 연결하지 못해도 미리보기로 돌아간다', async () => {
+  it('영상을 보내지 못하면 만든 방송을 종료하고 미리보기로 돌아가 이유를 남긴다', async () => {
     const env = setup({
-      openSignaling: vi.fn(async () => {
-        throw new Error('연결 실패')
+      publish: vi.fn(async () => {
+        throw new Error('whip 401')
       }),
     })
     const { broadcaster } = await previewing(env)
 
     await broadcaster.start({ title: '제목', thumbnail: null })
 
-    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'message', message: '연결 실패' } })
+    expect(env.endLive).toHaveBeenCalledWith(7)
+    expect(broadcaster.state()).toMatchObject({
+      phase: 'previewing',
+      startFailure: { kind: 'message', message: PUBLISH_FAILURE_MESSAGE },
+    })
+    env.camera.tracks.forEach((track) => expect(track.stop).not.toHaveBeenCalled())
+  })
+
+  it('영상 송출과 종료 요청이 모두 실패해도 미리보기로 돌아간다', async () => {
+    const env = setup({
+      publish: vi.fn(async () => {
+        throw new Error('whip 401')
+      }),
+    })
+    env.endLive.mockRejectedValueOnce(new Error('network'))
+    const { broadcaster } = await previewing(env)
+
+    await broadcaster.start({ title: '제목', thumbnail: null })
+
+    expect(broadcaster.state()).toMatchObject({ phase: 'previewing', startFailure: { kind: 'message' } })
   })
 
   it('송출을 시작하면 화면 꺼짐 방지 잠금을 요청한다', async () => {
@@ -278,107 +241,105 @@ describe('송출 시작', () => {
   })
 })
 
-describe('생존 신호와 화면 꺼짐 방지', () => {
-  const heartbeats = (env: ReturnType<typeof setup>) => env.sent.filter((message) => message.type === 'heartbeat')
-
-  it('송출이 끝나거나 화면을 떠나면 heartbeat를 멈춘다', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    try {
-      const first = await onAir()
-      expect(vi.getTimerCount()).toBe(1)
-      first.env.server.closeConnection()
-      expect(vi.getTimerCount()).toBe(0)
-      expect(heartbeats(first.env)).toHaveLength(0)
-
-      const second = await onAir()
-      expect(vi.getTimerCount()).toBe(1)
-      second.broadcaster.dispose()
-      expect(vi.getTimerCount()).toBe(0)
-      expect(heartbeats(second.env)).toHaveLength(0)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('송출 시작 전에는 heartbeat를 보내지 않는다', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    try {
-      const { env } = await previewing()
-      vi.advanceTimersByTime(30_000)
-      expect(env.sent).toEqual([])
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('화면 꺼짐 방지를 지원하지 않는 브라우저에서도 송출은 정상이다', async () => {
-    const { broadcaster, env } = await previewing(setup({ requestWakeLock: undefined, watchVisible: undefined }))
-    const started = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
-    await started
+describe('화면 꺼짐 방지', () => {
+  it('지원하지 않는 브라우저에서도 송출은 정상이다', async () => {
+    const { broadcaster } = await onAirWith(setup({ requestWakeLock: undefined, watchVisible: undefined }))
 
     expect(broadcaster.state().phase).toBe('onAir')
     broadcaster.dispose()
   })
 
-  it('화면 꺼짐 방지 요청이 거절돼도 송출은 계속된다', async () => {
-    const { broadcaster, env } = await previewing(
+  it('요청이 거절돼도 송출은 계속된다', async () => {
+    const { broadcaster } = await onAirWith(
       setup({ requestWakeLock: vi.fn(async () => Promise.reject(new Error('denied'))) }),
     )
-    const started = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
-    await started
 
     expect(broadcaster.state().phase).toBe('onAir')
   })
-
 })
 
 describe('송출 종료', () => {
-  it('end를 보내고 서버가 ended로 확인하면 카메라와 마이크를 끄고 ended가 된다', async () => {
+  it('종료하면 서버에 종료를 요청하고 카메라와 마이크, 영상 연결, 화면 잠금을 정리한 뒤 ended가 된다', async () => {
     const { broadcaster, env } = await onAir()
     await vi.waitFor(() => expect(env.deps.requestWakeLock).toHaveBeenCalled())
 
-    const ending = broadcaster.end()
-    expect(env.sent.at(-1)).toEqual({ type: 'end' })
-    expect(broadcaster.state().phase).toBe('onAir')
-    env.server.send({ type: 'ended' })
-    await ending
+    await broadcaster.end()
 
+    expect(env.endLive).toHaveBeenCalledWith(7)
     expect(broadcaster.state()).toEqual({ phase: 'ended', broadcastId: 7 })
     env.camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
-    expect(env.close).toHaveBeenCalled()
+    expect(env.publications[0].closed).toBe(true)
     await vi.waitFor(() => expect(env.release).toHaveBeenCalled())
   })
 
-  it('송출 중 서버가 연결을 닫으면 카메라를 끄고 ended가 된다', async () => {
+  it('종료 요청이 끝나기 전에 다시 눌러도 요청은 한 번이다', async () => {
+    const { broadcaster, env } = await onAir()
+    let confirm = () => {}
+    env.endLive.mockReturnValueOnce(new Promise<undefined>((resolve) => (confirm = () => resolve(undefined))))
+
+    const first = broadcaster.end()
+    const second = broadcaster.end()
+    expect(broadcaster.state().phase).toBe('onAir')
+    confirm()
+    await Promise.all([first, second])
+
+    expect(env.endLive).toHaveBeenCalledTimes(1)
+    expect(broadcaster.state().phase).toBe('ended')
+  })
+
+  it('종료 요청이 실패해도 화면은 ended가 된다(서버 방송은 송출이 끊긴 것을 보고 정리된다)', async () => {
+    const { broadcaster, env } = await onAir()
+    env.endLive.mockRejectedValueOnce(new Error('network'))
+
+    await broadcaster.end()
+
+    expect(broadcaster.state()).toEqual({ phase: 'ended', broadcastId: 7 })
+    expect(env.publications[0].closed).toBe(true)
+  })
+
+  it('송출 중 영상 연결이 끊기면(다른 곳에서 종료됨 등) 종료를 요청하고 카메라를 끄고 ended가 된다', async () => {
     const { broadcaster, env } = await onAir()
 
-    env.server.closeConnection()
+    env.publications[0].fail()
 
+    expect(env.endLive).toHaveBeenCalledWith(7)
     expect(broadcaster.state()).toEqual({ phase: 'ended', broadcastId: 7 })
     env.camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
   })
 
-  it('화면을 떠나면 end 없이 카메라를 끄고 연결을 닫는다(서버가 연결 끊김으로 종료한다)', async () => {
+  it('송출 중에 화면을 떠나면 종료를 요청하고 카메라와 영상 연결을 닫는다', async () => {
     const { broadcaster, env } = await onAir()
 
     broadcaster.dispose()
 
-    expect(env.sent.some((message) => message.type === 'end')).toBe(false)
+    expect(env.endLive).toHaveBeenCalledWith(7)
     env.camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
-    expect(env.close).toHaveBeenCalled()
+    expect(env.publications[0].closed).toBe(true)
   })
 
-  it('송출 중이 아닐 때 end는 아무 일도 하지 않는다', async () => {
+  it('송출 중이 아닐 때 end와 화면 떠나기는 종료를 요청하지 않는다', async () => {
     const { broadcaster, env } = await previewing()
 
     await broadcaster.end()
-
     expect(broadcaster.state().phase).toBe('previewing')
-    expect(env.sent).toEqual([])
+    broadcaster.dispose()
+
+    expect(env.endLive).not.toHaveBeenCalled()
+  })
+
+  it('종료한 뒤에 영상 연결이 끊겼다는 알림이 와도 종료를 다시 요청하지 않는다', async () => {
+    const { broadcaster, env } = await onAir()
+
+    await broadcaster.end()
+    env.publications[0].fail()
+
+    expect(env.endLive).toHaveBeenCalledTimes(1)
+  })
+
+  it('onAir가 되면 시청자 수는 0이다', async () => {
+    const { broadcaster } = await onAir()
+
+    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 0, maxViewers: null })
   })
 })
 
@@ -403,102 +364,6 @@ describe('화면 정리', () => {
 
     camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
     expect(broadcaster.state().phase).toBe('requestingCamera')
-  })
-})
-
-describe('시청자 연결', () => {
-  async function withViewers(...ids: string[]) {
-    const { broadcaster, env } = await onAir()
-    ids.forEach((viewerId) => env.server.send({ type: 'viewer-joined', viewerId }))
-    await vi.waitFor(() => expect(env.sent.filter((m) => m.type === 'offer')).toHaveLength(ids.length))
-    return { broadcaster, env }
-  }
-
-  it('onAir가 되면 시청자 수는 0이고, viewer-count를 받을 때마다 반영한다', async () => {
-    const { broadcaster, env } = await onAir()
-    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 0 })
-
-    env.server.send({ type: 'viewer-count', count: 3 })
-
-    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 3 })
-  })
-
-  it('viewer-count의 상한을 maxViewers로 기억한다', async () => {
-    const { broadcaster, env } = await onAir()
-    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', maxViewers: null })
-
-    env.server.send({ type: 'viewer-count', count: 3, max: 5 })
-
-    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 3, maxViewers: 5 })
-  })
-
-  it('시청자가 들어오면 그 시청자 몫의 연결을 만들어 내 영상을 싣고 offer를 보낸다', async () => {
-    const { env } = await withViewers('1')
-
-    expect(env.peers).toHaveLength(1)
-    expect(env.peers[0].tracks).toHaveLength(2)
-    expect(env.peers[0].localDescription).toEqual({ type: 'offer', sdp: 'fake-offer' })
-    expect(env.sent.at(-1)).toEqual({ type: 'offer', to: '1', sdp: 'fake-offer' })
-  })
-
-  it('시청자가 나가면 그 연결만 닫고 다른 시청자의 연결은 유지한다', async () => {
-    const { broadcaster, env } = await withViewers('1', '2')
-
-    env.server.send({ type: 'viewer-left', viewerId: '1' })
-    env.server.send({ type: 'viewer-count', count: 1 })
-
-    expect(env.peers[0].closed).toBe(true)
-    expect(env.peers[1].closed).toBe(false)
-    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 1 })
-    env.server.send({ type: 'answer', from: '2', sdp: 'still-ok' })
-    await vi.waitFor(() => expect(env.peers[1].remoteDescription).not.toBeNull())
-  })
-
-  it('송출을 끝내면 모든 시청자 연결을 닫는다', async () => {
-    const { broadcaster, env } = await withViewers('1', '2')
-
-    const ending = broadcaster.end()
-    env.server.send({ type: 'ended' })
-    await ending
-
-    expect(env.peers.every((peer) => peer.closed)).toBe(true)
-  })
-
-  it('화면을 떠나면 모든 시청자 연결을 닫는다', async () => {
-    const { broadcaster, env } = await withViewers('1', '2')
-
-    broadcaster.dispose()
-
-    expect(env.peers.every((peer) => peer.closed)).toBe(true)
-  })
-
-  it('알 수 없는 시청자를 가리키거나 번호가 없는 메시지는 무시한다', async () => {
-    const { env } = await onAir()
-
-    env.server.send({ type: 'answer', from: '9', sdp: 'x' })
-    env.server.send({ type: 'viewer-joined' })
-    env.server.send({ type: 'viewer-left', viewerId: '9' })
-
-    expect(env.peers).toHaveLength(0)
-  })
-
-  it('ICE 서버 목록은 비워 둔다', async () => {
-    const { createBrowserPeerConnection } = await import('./peer')
-    const created: unknown[] = []
-    vi.stubGlobal(
-      'RTCPeerConnection',
-      class {
-        constructor(config: unknown) {
-          created.push(config)
-        }
-        addEventListener() {}
-      },
-    )
-
-    createBrowserPeerConnection()
-    vi.unstubAllGlobals()
-
-    expect(created).toEqual([{ iceServers: [] }])
   })
 })
 
@@ -606,63 +471,5 @@ describe('카메라 전환', () => {
     finish(fakeStream().stream)
     await switching
     expect(broadcaster.cameraInfo().switching).toBe(false)
-  })
-})
-
-async function onAirWith(env: ReturnType<typeof setup>) {
-  const { broadcaster } = await previewing(env)
-  const started = broadcaster.start({ title: '제목', thumbnail: null })
-  await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-  env.server.send({ type: 'joined' })
-  await started
-  return { broadcaster, env }
-}
-
-describe('영상 송출(WHIP)', () => {
-  it('서버가 송출자로 받아들이면 그 방송 id와 송출 키로 카메라 영상을 보낸 뒤 onAir가 된다', async () => {
-    const { broadcaster, env } = await onAir()
-
-    expect(env.deps.publish).toHaveBeenCalledWith(7, 'fake-stream-key', env.camera.stream)
-    expect(broadcaster.state().phase).toBe('onAir')
-  })
-
-  it('영상을 보내지 못하면 시그널링을 닫고 미리보기로 돌아가 이유를 남긴다', async () => {
-    const env = setup({
-      publish: vi.fn(async () => {
-        throw new Error('whip 401')
-      }),
-    })
-    const { broadcaster } = await previewing(env)
-
-    const started = broadcaster.start({ title: '제목', thumbnail: null })
-    await vi.waitFor(() => expect(env.sent).toHaveLength(1))
-    env.server.send({ type: 'joined' })
-    await started
-
-    expect(env.close).toHaveBeenCalled()
-    expect(broadcaster.state()).toMatchObject({
-      phase: 'previewing',
-      startFailure: { kind: 'message', message: PUBLISH_FAILURE_MESSAGE },
-    })
-  })
-
-  it('송출 중 영상 연결이 끊기면 종료를 알리고 카메라를 끄고 ended가 된다', async () => {
-    const { broadcaster, env } = await onAir()
-
-    env.publications[0].fail()
-
-    expect(env.sent.at(-1)).toEqual({ type: 'end' })
-    expect(broadcaster.state()).toEqual({ phase: 'ended', broadcastId: 7 })
-    env.camera.tracks.forEach((track) => expect(track.stop).toHaveBeenCalled())
-  })
-
-  it('송출이 끝나거나 화면을 떠나면 영상 연결을 닫는다', async () => {
-    const ended = await onAir()
-    ended.env.server.send({ type: 'ended' })
-    const left = await onAir()
-    left.broadcaster.dispose()
-
-    expect(ended.env.publications[0].closed).toBe(true)
-    expect(left.env.publications[0].closed).toBe(true)
   })
 })

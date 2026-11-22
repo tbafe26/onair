@@ -1,12 +1,10 @@
-// 송출 모듈 내부: 송출 중 연결 유지. 서버에 생존 신호를 보내고, 화면 꺼짐 방지(Wake Lock)를 잡는다.
+// 송출 모듈 내부: 송출 중 화면 꺼짐 방지(Wake Lock)를 잡는다. 화면이 꺼지면 휴대폰이 카메라와 송출을 멈춘다.
 
 export interface WakeLockHandle {
   release(): Promise<void>
 }
 
 export interface KeepAliveDeps {
-  sendHeartbeat(): void
-  intervalMs: number
   /** 지원하지 않으면 없다. */
   requestWakeLock?: () => Promise<WakeLockHandle>
   /** 화면이 다시 보일 때마다 listener를 부른다. 돌려주는 함수로 구독을 푼다. 지원하지 않으면 없다. */
@@ -14,15 +12,14 @@ export interface KeepAliveDeps {
 }
 
 export interface KeepAlive {
-  /** 생존 신호를 주기로 보내고 화면 꺼짐 방지를 요청한다. 이미 시작했으면 아무 일도 하지 않는다. */
+  /** 화면 꺼짐 방지를 요청한다. 이미 시작했으면 아무 일도 하지 않는다. */
   start(): void
-  /** 신호와 구독을 멈추고 잠금을 푼다. */
+  /** 구독을 멈추고 잠금을 푼다. */
   stop(): void
 }
 
 export function createKeepAlive(deps: KeepAliveDeps): KeepAlive {
   let active = false
-  let timer: ReturnType<typeof setInterval> | null = null
   let unwatchVisible: (() => void) | null = null
   let wakeLock: WakeLockHandle | null = null
 
@@ -52,7 +49,6 @@ export function createKeepAlive(deps: KeepAliveDeps): KeepAlive {
     start() {
       if (active) return
       active = true
-      timer = setInterval(deps.sendHeartbeat, deps.intervalMs)
       // 브라우저는 화면이 가려지면 잠금을 스스로 풀기 때문에 다시 보일 때 새로 요청한다.
       unwatchVisible = deps.watchVisible?.(acquireWakeLock) ?? null
       acquireWakeLock()
@@ -60,8 +56,6 @@ export function createKeepAlive(deps: KeepAliveDeps): KeepAlive {
 
     stop() {
       active = false
-      if (timer !== null) clearInterval(timer)
-      timer = null
       unwatchVisible?.()
       unwatchVisible = null
       const lock = wakeLock

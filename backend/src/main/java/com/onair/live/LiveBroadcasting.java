@@ -17,11 +17,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -46,9 +49,14 @@ public class LiveBroadcasting {
     private final Clock clock;
     private final LiveRooms rooms;
     private final LiveChat chat;
+    private final MediaServer media;
+    // 이 서버가 미디어 서버에서 송출을 못 본 첫 시각. 서버마다 따로 세고, 종료는 DB 잠금으로 한 번만 반영된다.
+    private final Map<Long, Instant> missingSince = new HashMap<>();
 
-    /** 마지막 생존 신호에서 이 시간이 지나도록 연락이 없으면 송출자가 사라진 것으로 본다. */
-    public static final Duration SILENCE_LIMIT = Duration.ofSeconds(30);
+    private static final Logger log = LoggerFactory.getLogger(LiveBroadcasting.class);
+
+    /** 미디어 서버에 송출이 보이지 않은 채 이 시간이 지나면 송출자가 사라진 것으로 본다. */
+    public static final Duration PUBLISH_GRACE = Duration.ofSeconds(30);
 
     private static final Set<String> RELAYED_TYPES =
             Set.of(SignalMessage.OFFER, SignalMessage.ANSWER, SignalMessage.CANDIDATE);
@@ -61,9 +69,11 @@ public class LiveBroadcasting {
             PlatformTransactionManager transactionManager,
             Clock clock,
             LiveChat chat,
+            MediaServer media,
             @Value("${app.live.max-viewers:5}") int maxViewers) {
         this.clock = clock;
         this.chat = chat;
+        this.media = media;
         this.rooms = new LiveRooms(maxViewers);
         this.repository = repository;
         this.storage = storage;
@@ -158,26 +168,50 @@ public class LiveBroadcasting {
     }
 
     /**
-     * 마지막 생존 신호에서 30초가 지난 방송을 종료한다. 송출자가 연결된 방송은 마지막 heartbeat 시각을,
-     * 연결되지 않은 방송은 시작 시각을 첫 생존 신호로 본다. 서버가 다시 시작돼 방 표가 비어도
-     * 방송 중으로 남은 방송은 DB에서 찾으므로 같은 규칙으로 정리된다.
-     * 종료되는 방송의 송출자와 시청자에게는 ended를 보내고 연결을 닫는다.
+     * 미디어 서버의 송출 목록(publishing)과 DB의 방송 중 라이브방송을 맞춘다. 송출이 보이지 않은 채
+     * 30초가 지난 방송을 종료하고, 이 호출이 종료한 방송의 id를 돌려준다. 다시 보이면 유예를 처음부터 센다.
+     * 유예는 이 서버가 처음 못 본 시각부터 세므로 새로 뜬 서버도 송출 중인 방송을 바로 끄지 않는다.
+     * 방송 중이 아닌데 송출이 남아 있으면(종료 때 끊지 못함) 끊는다.
      */
-    public synchronized void expireSilentBroadcasters(Instant now) {
+    public List<Long> reconcile(Set<Long> publishing, Instant now) {
+        Reconciled result = reconcileState(publishing, now);
+        result.orphans().forEach(this::disconnectPublisher);
+        return result.ended();
+    }
+
+    private record Reconciled(List<Long> ended, List<Long> orphans) {
+    }
+
+    // 미디어 서버 호출은 잠금 밖에서 한다. 응답이 늦어도 다른 연결과 종료 요청을 막지 않는다.
+    private synchronized Reconciled reconcileState(Set<Long> publishing, Instant now) {
         List<LiveBroadcast> onAir = transaction.execute(status -> repository.findOnAirLives());
         if (onAir == null) {
-            return;
+            return new Reconciled(List.of(), List.of());
         }
-        List<Long> silent = new ArrayList<>();
+        Set<Long> onAirIds = new HashSet<>();
+        List<Long> expired = new ArrayList<>();
         for (LiveBroadcast live : onAir) {
-            Instant lastSignal = rooms.lastSignalOf(live.getId()).orElse(live.getCreatedAt());
-            if (now.isAfter(lastSignal.plus(SILENCE_LIMIT))) {
-                silent.add(live.getId());
+            long id = live.getId();
+            onAirIds.add(id);
+            if (publishing.contains(id)) {
+                missingSince.remove(id);
+                continue;
+            }
+            Instant since = missingSince.computeIfAbsent(id, key -> now);
+            if (now.isAfter(since.plus(PUBLISH_GRACE))) {
+                expired.add(id);
             }
         }
-        for (long broadcastId : silent) {
-            finishAndNotifyBroadcaster(broadcastId);
+        missingSince.keySet().retainAll(onAirIds);
+        List<Long> ended = new ArrayList<>();
+        for (long id : expired) {
+            missingSince.remove(id);
+            if (finishAndNotifyBroadcaster(id)) {
+                ended.add(id);
+            }
         }
+        List<Long> orphans = publishing.stream().filter(id -> !onAirIds.contains(id)).toList();
+        return new Reconciled(ended, orphans);
     }
 
     /** 미디어 서버가 송출을 받기 전에 묻는다. 방송 중인 라이브방송에 그 방송의 송출 키로 보낼 때만 true다. */
@@ -194,7 +228,13 @@ public class LiveBroadcasting {
      * 이미 종료됐으면 아무 일도 하지 않는다. 종료하면 시청자와 송출자에게 ended를 보내고 연결을 닫는다.
      * userId는 요청한 사용자이고 로그인하지 않았으면 null이다.
      */
-    public synchronized void endByOwner(long broadcastId, Long userId) {
+    public void endByOwner(long broadcastId, Long userId) {
+        if (endOnAirByOwner(broadcastId, userId)) {
+            disconnectPublisher(broadcastId);
+        }
+    }
+
+    private synchronized boolean endOnAirByOwner(long broadcastId, Long userId) {
         Boolean onAir = transaction.execute(status -> {
             Broadcast broadcast = OwnedBroadcasts.find(repository, broadcastId, userId);
             if (!broadcast.canEndStream()) {
@@ -202,28 +242,30 @@ public class LiveBroadcasting {
             }
             return broadcast.isOnAir();
         });
-        if (Boolean.TRUE.equals(onAir)) {
-            finishAndNotifyBroadcaster(broadcastId);
+        if (!Boolean.TRUE.equals(onAir)) {
+            return false;
+        }
+        finishAndNotifyBroadcaster(broadcastId);
+        return true;
+    }
+
+    /** 송출 화면은 송출이 끊긴 것을 보고 종료를 안다. 끊지 못하면 다음 상태 맞추기가 다시 끊는다. */
+    private void disconnectPublisher(long broadcastId) {
+        try {
+            media.disconnect(broadcastId);
+        } catch (MediaServerUnavailableException e) {
+            log.warn("방송 {}의 송출을 끊지 못했습니다: {}", broadcastId, e.getMessage());
         }
     }
 
-    private void finishAndNotifyBroadcaster(long broadcastId) {
+    private boolean finishAndNotifyBroadcaster(long broadcastId) {
         Optional<Peer> broadcaster = rooms.broadcasterOf(broadcastId);
-        finish(broadcastId);
+        boolean ended = finish(broadcastId);
         broadcaster.ifPresent(b -> {
             b.send(SignalMessage.of(SignalMessage.ENDED));
             b.close();
         });
-    }
-
-    /**
-     * 방송 중으로 남은 라이브방송을 모두 종료한다. 서버가 켜질 때 부른다.
-     * 서버가 꺼지면 송출 연결도 끊기므로, 켜진 시점에 방송 중인 방송은 모두 버려진 것이다.
-     */
-    public synchronized void endAllOnAir() {
-        Instant now = clock.instant();
-        transaction.executeWithoutResult(status ->
-                repository.findOnAirLives().forEach(live -> live.end(now)));
+        return ended;
     }
 
     private void relayFromBroadcaster(long broadcastId, Peer from, SignalMessage message) {
@@ -302,15 +344,23 @@ public class LiveBroadcasting {
         });
     }
 
-    private void finish(long broadcastId) {
-        transaction.executeWithoutResult(status ->
-                repository.findLiveByIdForUpdate(broadcastId).ifPresent(live -> {
-                    live.end(clock.instant());
-                    chat.close(broadcastId);
-                }));
+    /**
+     * 방송 중일 때만 종료로 바꾸고 모든 서버에 알린다. 여러 서버가 동시에 불러도 행 잠금 뒤 상태를 다시 보므로
+     * 한 번만 반영되고, 그때만 true다.
+     */
+    private boolean finish(long broadcastId) {
+        boolean ended = Boolean.TRUE.equals(transaction.execute(status ->
+                repository.findLiveByIdForUpdate(broadcastId)
+                        .filter(live -> live.end(clock.instant()))
+                        .map(live -> {
+                            chat.close(broadcastId);
+                            return true;
+                        })
+                        .orElse(false)));
         for (Peer viewer : rooms.closeRoom(broadcastId)) {
             viewer.send(SignalMessage.of(SignalMessage.ENDED));
             viewer.close();
         }
+        return ended;
     }
 }

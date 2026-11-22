@@ -266,7 +266,7 @@ export function LiveBroadcastPage() {
           <p className="text-sub">{state.maxViewers === null
               ? `시청자 ${state.viewerCount}명`
               : `시청자 ${state.viewerCount}/${state.maxViewers}`}</p>
-          <ChatPanel broadcastId={state.broadcastId} className="h-72" />
+          <ChatPanel broadcastId={state.broadcastId} onEnded={() => void end()} className="h-72" />
           <DonationHistory broadcastId={state.broadcastId} />
           {confirmingEnd ? (
             <div role="alertdialog" aria-label="송출 종료 확인" className="flex flex-col gap-3 rounded-2xl bg-card p-5">
