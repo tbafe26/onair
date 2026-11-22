@@ -11,7 +11,7 @@ export type BroadcasterState =
   /** startFailure는 직전 송출 시작이 실패한 이유다. 미리보기로 돌아와 다시 시도할 수 있다. */
   | { phase: 'previewing'; stream: MediaStream; startFailure: StartFailure | null }
   | { phase: 'starting'; stream: MediaStream }
-  | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number; viewerCount: number; maxViewers: number | null }
+  | { phase: 'onAir'; stream: MediaStream; broadcastId: number; startedAt: number }
   | { phase: 'ended'; broadcastId: number }
 
 /**
@@ -263,7 +263,7 @@ export function createLiveBroadcaster(deps: BroadcasterDeps): LiveBroadcaster {
         void requestEnd(current.broadcastId)
         finish(current.broadcastId)
       })
-      set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now(), viewerCount: 0, maxViewers: null })
+      set({ phase: 'onAir', stream, broadcastId: started.id, startedAt: deps.now() })
       keepAlive.start()
     },
 

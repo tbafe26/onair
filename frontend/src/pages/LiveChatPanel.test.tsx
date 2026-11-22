@@ -221,8 +221,6 @@ it('송출 화면의 채팅은 송출 중에만 있고 미리보기와 따로 �
       stream: fakeStream(),
       broadcastId: 7,
       startedAt: Date.now(),
-      viewerCount: 0,
-      maxViewers: 5,
     }),
   )
   setChat(app, { phase: 'open', comments: [comment(1, '시청자 인사')], donations: [] })
