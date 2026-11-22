@@ -22,7 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** 채팅의 동시성: 느린 구독자가 다른 방송을 막지 않고, 종료 뒤에는 채팅이 저장되지 않는다. */
+/** 채팅의 동시성: 느린 구독자가 다른 방송을 막지 않고, 같은 방송의 쓰기끼리 기다리지 않으며, 종료 뒤에는 채팅이 저장되지 않는다. */
 class LiveChatConcurrencyTest extends ApiTestSupport {
 
     @Autowired
@@ -95,16 +95,21 @@ class LiveChatConcurrencyTest extends ApiTestSupport {
         assertThat(fast.types()).containsExactly("comment");
     }
 
-    @Test
-    void 진행_중인_채팅_쓰기가_끝나야_방송이_종료되고_그_뒤에는_채팅이_저장되지_않는다() throws Exception {
-        long userId = owner().userId();
-        long id = 방송을_시작한다("종료 경쟁");
+    /** 커밋하지 않고 붙든 채팅 쓰기. commit을 내리면 커밋한다. */
+    record HeldWrite(CountDownLatch commit, Future<?> future) {
+
+        void 커밋한다() throws Exception {
+            commit.countDown();
+            future.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    HeldWrite 커밋하지_않고_쓴다(long id, long userId, String content) throws InterruptedException {
         CountDownLatch written = new CountDownLatch(1);
         CountDownLatch commit = new CountDownLatch(1);
-        // 채팅을 쓴 트랜잭션을 커밋하지 않고 붙들어, 쓰기와 종료가 겹친 순간을 만든다.
-        Future<?> writing = executor.submit(() -> new TransactionTemplate(transactionManager)
+        Future<?> future = executor.submit(() -> new TransactionTemplate(transactionManager)
                 .executeWithoutResult(status -> {
-                    comments.write(id, userId, "끝나기 직전");
+                    comments.write(id, userId, content);
                     written.countDown();
                     try {
                         commit.await(10, TimeUnit.SECONDS);
@@ -113,14 +118,41 @@ class LiveChatConcurrencyTest extends ApiTestSupport {
                     }
                 }));
         assertThat(written.await(5, TimeUnit.SECONDS)).isTrue();
+        return new HeldWrite(commit, future);
+    }
+
+    @Test
+    void 같은_방송의_채팅_쓰기는_서로를_기다리지_않는다() throws Exception {
+        long userId = owner().userId();
+        long id = 방송을_시작한다("인기 방송");
+        HeldWrite first = 커밋하지_않고_쓴다(id, userId, "먼저");
+
+        Future<?> second = executor.submit(() -> comments.write(id, userId, "다음"));
+
+        try {
+            second.get(3, TimeUnit.SECONDS);
+        } finally {
+            first.커밋한다();
+        }
+        assertThat(comments.list(id, null, null).items()).extracting(CommentView::content).containsExactlyInAnyOrder("먼저", "다음");
+    }
+
+    @Test
+    void 진행_중인_채팅_쓰기가_모두_끝나야_방송이_종료되고_그_뒤에는_채팅이_저장되지_않는다() throws Exception {
+        long userId = owner().userId();
+        long id = 방송을_시작한다("종료 경쟁");
+        HeldWrite first = 커밋하지_않고_쓴다(id, userId, "끝나기 직전 1");
+        HeldWrite second = 커밋하지_않고_쓴다(id, userId, "끝나기 직전 2");
 
         Future<?> ending = executor.submit(() -> live.endByOwner(id, userId));
 
         assertThatThrownBy(() -> ending.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
-        commit.countDown();
-        writing.get(5, TimeUnit.SECONDS);
+        first.커밋한다();
+        assertThatThrownBy(() -> ending.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+        second.커밋한다();
         ending.get(5, TimeUnit.SECONDS);
-        assertThat(comments.list(id, null, null).items()).extracting(CommentView::content).containsExactly("끝나기 직전");
+        assertThat(comments.list(id, null, null).items()).extracting(CommentView::content)
+                .containsExactlyInAnyOrder("끝나기 직전 1", "끝나기 직전 2");
         assertThatThrownBy(() -> comments.write(id, userId, "늦은 글")).isInstanceOf(ChatClosedException.class);
     }
 }

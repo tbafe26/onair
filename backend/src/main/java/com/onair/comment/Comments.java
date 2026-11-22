@@ -56,8 +56,7 @@ public class Comments implements BroadcastDeletionListener {
     @Transactional
     public CommentView write(long broadcastId, Long userId, String rawContent) {
         AppUser author = Requester.load(userId, users);
-        // 행을 잠그고 읽는다. 방송 종료도 같은 행을 잠그므로, 방송 중 확인과 저장 사이에 종료가 끼어들 수 없다.
-        Broadcast broadcast = broadcasts.findByIdForUpdate(broadcastId)
+        Broadcast broadcast = broadcasts.findByIdForShare(broadcastId)
                 .orElseThrow(() -> new BroadcastNotFoundException(broadcastId));
         // 라이브방송의 댓글이 채팅이다. 방송 중일 때만 쓸 수 있다.
         if (!broadcast.acceptsCommentsNow()) {
