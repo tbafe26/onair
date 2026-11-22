@@ -25,7 +25,7 @@ class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        ChatSubscriber subscriber = new WebSocketPeer(session, json);
+        ChatSubscriber subscriber = new WebSocketChatSubscriber(session, json);
         session.getAttributes().put(SUBSCRIBER_ATTRIBUTE, subscriber);
         Long id = broadcastId(session);
         if (id == null) {

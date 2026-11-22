@@ -99,7 +99,7 @@ function RecordingDetail({ broadcast: data }: { broadcast: RecordingBroadcastDet
   )
 }
 
-/** 라이브방송 상세. 방송 중이면 WebRTC로 영상을 받아 보여 주고, 종료됐으면 종료 안내를 보여 준다. */
+/** 라이브방송 상세. 방송 중이면 HLS로 영상을 보여 주고, 종료됐으면 종료 안내를 보여 준다. */
 function LiveDetail({ broadcast: data }: { broadcast: LiveBroadcastDetail }) {
   const { state } = useAuth()
   const { onAir } = viewBroadcast(data, state)

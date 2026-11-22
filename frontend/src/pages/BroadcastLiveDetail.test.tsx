@@ -7,7 +7,7 @@ import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
-// 화면 테스트는 가짜 시청 모듈의 상태를 직접 바꿔 화면만 확인한다. 시그널링 동작은 live/viewer.test.ts가 맡는다.
+// 화면 테스트는 가짜 시청 모듈의 상태를 직접 바꿔 화면만 확인한다. 재생 목록 확인과 재생 동작은 live/viewer.test.ts가 맡는다.
 type App = ReturnType<typeof renderApp>
 
 function setViewer(app: App, state: ViewerState) {

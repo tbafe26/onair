@@ -8,9 +8,10 @@ import { Button } from '../components/ui/button'
 import type { CameraFacing, CameraInfo, CameraUnavailableReason } from '../live/broadcaster'
 import { useBroadcastInput } from '../hooks/useBroadcastInput'
 import { useBroadcastForm } from '../hooks/useBroadcastForm'
-import { START_FAILURE_MESSAGE } from '../live/signaling-protocol'
 import { useLiveBroadcaster } from '../live/useLiveBroadcaster'
 import { formatDuration } from '../lib/format'
+
+const START_FAILURE_MESSAGE = '송출을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.'
 
 const inputClass =
   'h-11 w-full rounded-xl border border-border bg-background px-4 text-foreground outline-none placeholder:text-sub focus-visible:ring-2 focus-visible:ring-ring'
@@ -263,9 +264,6 @@ export function LiveBroadcastPage() {
             경과 시간 <Elapsed startedAt={state.startedAt} />
           </p>
           <CameraSwitch camera={camera} disabled onSwitch={() => {}} />
-          <p className="text-sub">{state.maxViewers === null
-              ? `시청자 ${state.viewerCount}명`
-              : `시청자 ${state.viewerCount}/${state.maxViewers}`}</p>
           <ChatPanel broadcastId={state.broadcastId} onEnded={() => void end()} className="h-72" />
           <DonationHistory broadcastId={state.broadcastId} />
           {confirmingEnd ? (

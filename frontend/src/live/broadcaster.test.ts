@@ -335,12 +335,6 @@ describe('송출 종료', () => {
 
     expect(env.endLive).toHaveBeenCalledTimes(1)
   })
-
-  it('onAir가 되면 시청자 수는 0이다', async () => {
-    const { broadcaster } = await onAir()
-
-    expect(broadcaster.state()).toMatchObject({ phase: 'onAir', viewerCount: 0, maxViewers: null })
-  })
 })
 
 describe('화면 정리', () => {

@@ -144,9 +144,7 @@ class LiveBroadcastApiTest extends ApiTestSupport {
     @Test
     void 종료된_방송은_상태와_종료_시각이_조회에_반영된다() throws Exception {
         Started started = 시작한다("종료 반영");
-        RecordingPeer broadcaster = new RecordingPeer();
-        live.joinAsBroadcaster(started.id(), started.streamKey(), owner().userId(), broadcaster);
-        live.relay(broadcaster, SignalMessage.of("end"));
+        live.endByOwner(started.id(), owner().userId());
 
         mockMvc.perform(get("/api/broadcasts/" + started.id()))
                 .andExpect(jsonPath("$.status").value("ENDED"))

@@ -94,20 +94,6 @@ class LiveChatTest extends ApiTestSupport {
     }
 
     @Test
-    void 송출자가_끝내도_구독자는_ended를_받는다() {
-        var started = live.start(new StartLiveCommand("채팅 방송", null), owner().userId());
-        RecordingPeer broadcaster = new RecordingPeer();
-        live.joinAsBroadcaster(started.broadcastId(), started.streamKey(), owner().userId(), broadcaster);
-        RecordingSubscriber subscriber = new RecordingSubscriber();
-        chat.subscribe(started.broadcastId(), subscriber);
-
-        live.relay(broadcaster, SignalMessage.of(SignalMessage.END));
-
-        assertThat(subscriber.types()).containsExactly("ended");
-        assertThat(subscriber.closed).isTrue();
-    }
-
-    @Test
     void 송출이_끊겨_상태_맞추기로_종료돼도_구독자는_ended를_받는다() {
         long id = 방송을_시작한다();
         RecordingSubscriber subscriber = new RecordingSubscriber();

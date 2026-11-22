@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.jayway.jsonpath.JsonPath;
 import com.onair.auth.Csrf;
-import com.onair.live.SignalingWebSocketTest.Inbox;
 import com.onair.support.RealPortLogin;
 import java.net.URI;
 import java.util.Map;
@@ -75,7 +74,7 @@ class ChatWebSocketTest {
         String cookie = 쿠키();
         int id = 방송을_시작한다(cookie);
         Inbox inbox = new Inbox();
-        구독한다(id, SignalingWebSocketTest.DEV_SERVER_ORIGIN, inbox);
+        구독한다(id, Inbox.DEV_SERVER_ORIGIN, inbox);
 
         쓴다(cookie, id, "실시간 채팅");
 
@@ -107,7 +106,7 @@ class ChatWebSocketTest {
                 .toBodilessEntity();
         Inbox inbox = new Inbox();
 
-        구독한다(id, SignalingWebSocketTest.DEV_SERVER_ORIGIN, inbox);
+        구독한다(id, Inbox.DEV_SERVER_ORIGIN, inbox);
 
         assertThat((String) JsonPath.read(inbox.next(), "$.type")).isEqualTo("ended");
         assertThat(inbox.closed.poll(10, TimeUnit.SECONDS)).isNotNull();

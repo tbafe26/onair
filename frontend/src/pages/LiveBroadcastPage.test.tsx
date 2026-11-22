@@ -9,7 +9,7 @@ import { signedInAs } from '../test/auth'
 import { renderApp } from '../test/renderApp'
 import { server } from '../test/server'
 
-// 화면 테스트는 가짜 송출 모듈의 상태를 직접 바꿔 화면만 확인한다. 시그널링과 카메라 동작은 live/broadcaster.test.ts가 맡는다.
+// 화면 테스트는 가짜 송출 모듈의 상태를 직접 바꿔 화면만 확인한다. 영상 송출과 카메라 동작은 live/broadcaster.test.ts가 맡는다.
 const images = vi.hoisted(() => ({ deps: {} as ThumbnailImageDeps }))
 
 vi.mock('../lib/thumbnail-image-browser', () => ({
@@ -58,14 +58,12 @@ function preview(app: App, startFailure: StartFailure | null = null) {
   setState(app, { phase: 'previewing', stream: fakeStream(), startFailure })
 }
 
-function goOnAir(app: App, extra: { viewerCount?: number; maxViewers?: number | null; startedAt?: number } = {}) {
+function goOnAir(app: App, extra: { startedAt?: number } = {}) {
   setState(app, {
     phase: 'onAir',
     stream: fakeStream(),
     broadcastId: 7,
     startedAt: extra.startedAt ?? Date.now(),
-    viewerCount: extra.viewerCount ?? 0,
-    maxViewers: extra.maxViewers ?? null,
   })
 }
 
@@ -190,7 +188,7 @@ it('썸네일이 너무 커서 거절되면 일반 실패 문구 대신 썸네�
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
 })
 
-it('시그널링 단계의 실패는 모듈이 준 문구를 그대로 보여 준다', async () => {
+it('영상 송출 단계의 실패는 모듈이 준 문구를 그대로 보여 준다', async () => {
   const app = await openPreview()
 
   preview(app, { kind: 'message', message: '이미 다른 곳에서 송출 중인 방송입니다.' })
@@ -295,21 +293,10 @@ it('송출 중에 탭을 닫거나 새로고침하려 하면 브라우저 확인
   expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(false)
 })
 
-it('송출 중에는 현재 시청자 수를 보여 주고, 바뀌면 따라간다', async () => {
-  const app = await openOnAir()
-  expect(screen.getByText('시청자 0명')).toBeInTheDocument()
+it('송출 중 화면에는 시청자 수를 보여 주지 않는다', async () => {
+  await openOnAir()
 
-  goOnAir(app, { viewerCount: 2 })
-  expect(await screen.findByText('시청자 2명')).toBeInTheDocument()
-
-  goOnAir(app, { viewerCount: 1 })
-  expect(await screen.findByText('시청자 1명')).toBeInTheDocument()
-})
-
-it('상한을 받으면 시청자 수를 현재/상한으로 보여 준다', async () => {
-  await openOnAir({ viewerCount: 3, maxViewers: 5 })
-
-  expect(await screen.findByText('시청자 3/5')).toBeInTheDocument()
+  expect(screen.queryByText(/^시청자/)).not.toBeInTheDocument()
 })
 
 describe('썸네일 선택', () => {

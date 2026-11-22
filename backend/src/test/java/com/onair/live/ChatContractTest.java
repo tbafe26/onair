@@ -70,7 +70,7 @@ public class ChatContractTest extends ApiTestSupport {
         chat.subscribe(id, subscriber);
         comments.write(id, owner().userId(), "계약 확인");
 
-        // 화면이 받는 모양 그대로(WebSocketPeer와 같은 직렬화)로 바꿔 필드 이름을 본다.
+        // 화면이 받는 모양 그대로(WebSocketChatSubscriber와 같은 직렬화)로 바꿔 필드 이름을 본다.
         JsonNode comment = json.readTree(json.writeValueAsString(subscriber.last().fields().get("comment")));
 
         assertThat(comment.propertyNames()).containsExactlyInAnyOrderElementsOf(이름들(contract.get("commentFields")));

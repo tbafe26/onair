@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-/** 라이브방송의 시작과 소유자의 종료 요청을 송출 모듈에 넘기는 adapter. 송출자 연결로 끝내는 길은 시그널링 WebSocket이다. */
+/** 라이브방송의 시작과 소유자의 종료 요청을 라이브방송 모듈에 넘기는 adapter. */
 @RestController
 class LiveBroadcastController {
 
