@@ -3,6 +3,7 @@
 //   docker run --rm --network k3d-onair -v "${PWD}/load:/load" -e BROADCAST_ID=1 grafana/k6:2.4.0 run /load/chat.js
 // MODE=throughput: 쓰기 속도를 단계적으로 올려 파드 1개가 버티는 초당 채팅 수를 찾는다.
 // MODE=steady(기본): 정해진 속도로 DURATION 동안 쓰고 받는다. 서버가 늘고 줄 때 재연결과 빠진 채팅을 본다.
+// 빠진 채팅(chat_gaps)은 댓글 번호의 빈 곳으로 센다. 번호는 모든 방송이 함께 쓰므로 측정 중에 다른 댓글이 없어야 한다.
 import http from 'k6/http'
 import { check } from 'k6'
 import { Counter, Trend } from 'k6/metrics'
@@ -29,7 +30,7 @@ const reconnects = new Counter('chat_reconnects')
 const backfillRequests = new Counter('chat_backfill_requests')
 const backfilled = new Counter('chat_backfilled')
 const gaps = new Counter('chat_gaps')
-const ended = new Counter('chat_ended')
+const endedSignals = new Counter('chat_ended')
 
 const throughputStages = [10, 20, 40, 60, 80, 100, 120].map((target) => ({ target, duration: '1m' }))
 // 쓰기는 30초 뒤 시작하고, 구독은 쓰기가 끝난 뒤 30초 더 받는다.
@@ -37,8 +38,9 @@ const WRITE_MS = MODE === 'throughput' ? throughputStages.length * 60000 : toMil
 const SUBSCRIBE_MS = WRITE_MS + 60000
 
 function toMillis(text) {
-  const value = Number(text.slice(0, -1))
-  return text.endsWith('m') ? value * 60000 : value * 1000
+  const match = /^(\d+)([ms])$/.exec(text)
+  if (!match) throw new Error(`DURATION은 12m, 90s처럼 쓴다: ${text}`)
+  return Number(match[1]) * (match[2] === 'm' ? 60000 : 1000)
 }
 
 export const options = {
@@ -47,7 +49,8 @@ export const options = {
       executor: 'constant-vus',
       exec: 'subscribe',
       vus: SUBSCRIBERS,
-      duration: `${SUBSCRIBE_MS / 1000}s`,
+      // 구독을 닫고 빈 번호를 세는 타이머가 시나리오 끝에 잘리지 않게 여유를 둔다.
+      duration: `${SUBSCRIBE_MS / 1000 + 15}s`,
       gracefulStop: '10s',
     },
     writers: MODE === 'throughput'
@@ -125,7 +128,7 @@ function sentAt(content) {
   return match ? Number(match[1]) : null
 }
 
-/** 마지막으로 받은 댓글 뒤의 것을 최신순 쪽으로 거슬러 받는다(chat.ts의 채우기와 같은 방식). */
+// 마지막으로 받은 댓글 뒤의 것을 최신순 쪽으로 거슬러 받는다(chat.ts의 채우기와 같은 방식).
 function backfill(lastId, received) {
   let before
   for (let page = 0; page < MAX_BACKFILL_PAGES; page += 1) {
@@ -164,7 +167,8 @@ export function subscribe() {
     socket.onopen = () => {
       if (!reconnecting) return
       reconnects.add(1)
-      console.log(`reconnect ${Date.now()}`)
+      // 아직 받은 댓글이 없으면 기준이 없어 채우지 않는다(옛 댓글까지 거슬러 받지 않게).
+      if (lastId === 0) return
       backfill(lastId, received)
       for (const id of received) lastId = Math.max(lastId, id)
     }
@@ -172,15 +176,15 @@ export function subscribe() {
       const message = JSON.parse(event.data)
       if (message.type === 'ended') {
         // 화면처럼 종료 신호를 받으면 다시 붙지 않는다.
-        ended.add(1)
+        endedSignals.add(1)
         stopped = true
         socket.close()
         return
       }
       if (message.type !== 'comment') return
       const { id, content } = message.comment
-      const at = sentAt(content)
-      if (at !== null && !received.has(id)) delivery.add(Date.now() - at)
+      const sentAtMs = sentAt(content)
+      if (sentAtMs !== null && !received.has(id)) delivery.add(Date.now() - sentAtMs)
       received.add(id)
       lastId = Math.max(lastId, id)
     }
@@ -194,7 +198,7 @@ export function subscribe() {
   connect(false)
 }
 
-/** 처음 받은 댓글부터 마지막까지 사이에 빠진 번호를 센다. 이 방송에만 댓글을 쓰므로 번호는 이어진다. */
+// 처음 받은 댓글부터 마지막까지 사이에 빠진 번호를 센다.
 function countGaps(received) {
   if (received.size === 0) return
   let min = Infinity
