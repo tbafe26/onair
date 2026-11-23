@@ -32,14 +32,14 @@ public interface BroadcastRepository extends JpaRepository<Broadcast, Long> {
     Optional<LiveBroadcast> findLiveById(@Param("id") long id);
 
     /**
-     * 행을 잠그고 읽는다. 채팅 쓰기와 방송 종료가 같은 행을 잠가 서로 기다리게 해, 종료가 확정된 뒤에는 채팅이 저장되지 않게 한다.
-     * 잠금은 부른 쪽 트랜잭션이 끝날 때까지 유지된다.
+     * 행을 공유 잠금으로 읽는다. 채팅 쓰기끼리는 서로 기다리지 않고, 방송 종료(findLiveByIdForUpdate)와는 서로 기다리게 해
+     * 종료가 확정된 뒤에는 채팅이 저장되지 않게 한다. 잠금은 부른 쪽 트랜잭션이 끝날 때까지 유지된다.
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Lock(LockModeType.PESSIMISTIC_READ)
     @Query("select b from Broadcast b where b.id = :id")
-    Optional<Broadcast> findByIdForUpdate(@Param("id") long id);
+    Optional<Broadcast> findByIdForShare(@Param("id") long id);
 
-    /** findByIdForUpdate와 같되 라이브방송만 읽는다. */
+    /** 라이브방송 행을 배타 잠금으로 읽는다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select l from LiveBroadcast l where l.id = :id")
     Optional<LiveBroadcast> findLiveByIdForUpdate(@Param("id") long id);
