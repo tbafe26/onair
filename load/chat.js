@@ -6,6 +6,7 @@
 // 빠진 채팅(chat_gaps)은 댓글 번호의 빈 곳으로 센다. 번호는 모든 방송이 함께 쓰므로 측정 중에 다른 댓글이 없어야 한다.
 import http from 'k6/http'
 import { check } from 'k6'
+import encoding from 'k6/encoding'
 import { Counter, Trend } from 'k6/metrics'
 import { WebSocket } from 'k6/websockets'
 import { setTimeout, clearTimeout } from 'k6/timers'
@@ -83,13 +84,15 @@ export const options = {
 }
 
 export function setup() {
+  // 시험 계정은 부하를 건 서버에 남으므로 비밀번호를 실행마다 만든다.
+  const password = encoding.b64encode(crypto.getRandomValues(new Uint8Array(18)).buffer, 'rawurl')
   const sessions = []
   for (let i = 0; i < WRITERS; i += 1) {
     const jar = new http.CookieJar()
     http.get(`${BASE_URL}/api/broadcasts?size=1`, { jar })
     const res = http.post(
       `${BASE_URL}/api/auth/signup`,
-      JSON.stringify({ loginId: `k6w${i}x${Date.now().toString(36)}`.slice(0, 20), password: 'load-test-pass', nickname: `부하${i}` }),
+      JSON.stringify({ loginId: `k6w${i}x${Date.now().toString(36)}`.slice(0, 20), password, nickname: `부하${i}` }),
       { jar, headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': cookie(jar, 'XSRF-TOKEN') } },
     )
     check(res, { 'signup 201': (r) => r.status === 201 })
