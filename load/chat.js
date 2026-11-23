@@ -6,6 +6,7 @@
 // 빠진 채팅(chat_gaps)은 댓글 번호의 빈 곳으로 센다. 번호는 모든 방송이 함께 쓰므로 측정 중에 다른 댓글이 없어야 한다.
 import http from 'k6/http'
 import { check } from 'k6'
+import encoding from 'k6/encoding'
 import { Counter, Trend } from 'k6/metrics'
 import { WebSocket } from 'k6/websockets'
 import { setTimeout, clearTimeout } from 'k6/timers'
@@ -18,8 +19,11 @@ const ORIGIN = __ENV.ORIGIN || 'http://localhost:8088'
 const MODE = __ENV.MODE || 'steady'
 const SUBSCRIBERS = Number(__ENV.SUBSCRIBERS || 50)
 const RATE = Number(__ENV.RATE || 5)
-// 가입은 비밀번호 해시로 CPU를 많이 쓰므로 시작 전에 이만큼만 하고 세션을 나눠 쓴다.
-const WRITERS = Number(__ENV.WRITERS || 20)
+// 한 세션을 여러 요청이 동시에 쓰면 서버의 세션 행 갱신이 줄을 서므로 가상 사용자마다 세션 하나를 쓴다.
+// 가상 사용자 번호는 시나리오와 상관없이 1부터 붙으므로 전체 가상 사용자 수만큼 만든다.
+// 가입은 비밀번호 해시로 CPU를 많이 쓰므로 부하를 걸기 전에 한다.
+const WRITER_MAX_VUS = MODE === 'throughput' ? 200 : 100
+const WRITERS = Number(__ENV.WRITERS || SUBSCRIBERS + WRITER_MAX_VUS)
 const DURATION = __ENV.DURATION || '12m'
 // 화면(chat.ts)과 같은 값: 고정 3초 뒤 재연결, 빠진 채팅은 최신순 최대 10쪽까지 채운다.
 const RECONNECT_DELAY_MS = 3000
@@ -44,6 +48,7 @@ function toMillis(text) {
 }
 
 export const options = {
+  setupTimeout: '5m',
   scenarios: {
     subscribers: {
       executor: 'constant-vus',
@@ -62,7 +67,7 @@ export const options = {
           timeUnit: '1s',
           stages: throughputStages,
           preAllocatedVUs: 50,
-          maxVUs: 200,
+          maxVUs: WRITER_MAX_VUS,
         }
       : {
           executor: 'constant-arrival-rate',
@@ -72,7 +77,7 @@ export const options = {
           timeUnit: '1s',
           duration: DURATION,
           preAllocatedVUs: 20,
-          maxVUs: 100,
+          maxVUs: WRITER_MAX_VUS,
         },
   },
   thresholds: {
@@ -83,13 +88,15 @@ export const options = {
 }
 
 export function setup() {
+  // 시험 계정은 부하를 건 서버에 남으므로 비밀번호를 실행마다 만든다.
+  const password = encoding.b64encode(crypto.getRandomValues(new Uint8Array(18)).buffer, 'rawurl')
   const sessions = []
   for (let i = 0; i < WRITERS; i += 1) {
     const jar = new http.CookieJar()
     http.get(`${BASE_URL}/api/broadcasts?size=1`, { jar })
     const res = http.post(
       `${BASE_URL}/api/auth/signup`,
-      JSON.stringify({ loginId: `k6w${i}x${Date.now().toString(36)}`.slice(0, 20), password: 'load-test-pass', nickname: `부하${i}` }),
+      JSON.stringify({ loginId: `k6w${i}x${Date.now().toString(36)}`.slice(0, 20), password, nickname: `부하${i}` }),
       { jar, headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': cookie(jar, 'XSRF-TOKEN') } },
     )
     check(res, { 'signup 201': (r) => r.status === 201 })
@@ -106,7 +113,7 @@ function cookie(jar, name) {
 // k6는 반복마다 가상 사용자의 쿠키를 비우므로 매번 세션을 다시 넣는다.
 function useSession(sessions) {
   const jar = http.cookieJar()
-  const cookies = sessions[__VU % sessions.length]
+  const cookies = sessions[(__VU - 1) % sessions.length]
   for (const name of Object.keys(cookies)) jar.set(BASE_URL, name, cookies[name][0])
 }
 
