@@ -62,9 +62,9 @@
 | --- | --- |
 | 웹 화면 | React SPA. 개발 서버가 `/api`를 백엔드로 넘겨 같은 출처로 동작합니다(CORS 없음). |
 | REST API | 방송·댓글·후원 API. 로그인은 서버 세션 쿠키, 상태를 바꾸는 요청은 CSRF 토큰으로 보호합니다. |
-| 시그널링 WebSocket | 송출자와 시청자의 WebRTC 연결 신호를 중계하고, 송출자의 생존 신호로 끊긴 방송을 정리합니다. |
-| 채팅 WebSocket | 저장된 채팅과 확정된 후원을 방송 중인 화면에 실시간으로 보냅니다(쓰기는 REST). |
-| 영상 | 라이브 영상은 송출자와 시청자가 WebRTC로 직접 주고받고, 서버는 영상을 거치지 않습니다. |
+| 미디어 서버 | 송출 화면이 WebRTC(WHIP)로 보낸 영상을 MediaMTX가 받아 HLS 조각으로 공유 폴더에 씁니다. API 서버는 송출 목록을 읽어 끊긴 방송을 정리합니다. |
+| 채팅 WebSocket | 저장된 채팅과 확정된 후원을 방송 중인 화면에 실시간으로 보냅니다(쓰기는 REST). 서버가 여러 대여도 PostgreSQL 알림(NOTIFY)으로 모든 서버의 시청자에게 갑니다. |
+| 영상 | 시청 화면은 API 서버가 공유 폴더에서 내주는 HLS(`/hls/...`)를 재생합니다. |
 | 결제 | 브라우저는 토스 결제위젯으로 결제하고, 서버가 토스 승인 API로 확정합니다. 승인 통지(웹훅)도 받습니다. |
 
 <br>
@@ -86,7 +86,81 @@
 
 <br>
 
-## 실행 방법
+## 로컬 오토스케일 (5단계)
+
+### 구현 범위
+
+- 컨테이너 이미지: `backend/Dockerfile`, `frontend/Dockerfile`
+- 여러 인스턴스 실행: k3d 클러스터에 배포(`k8s/*.yaml`)
+- 자동 스케일 아웃·인: HPA가 API 서버 CPU 50% 기준으로 1~3개 사이에서 조절(`k8s/hpa.yaml`)
+- 요청 분산: Ingress와 Service(`k8s/ingress.yaml`, `k8s/backend.yaml`)
+- 공용 저장소: 로그인 세션·방송·댓글·후원은 PostgreSQL, 영상은 공유 볼륨, 라이브 상태는 DB(`k8s/postgres.yaml`, `k8s/backend.yaml`)
+- 부하 스크립트: k6(`load/list-broadcasts.js`, `load/chat.js`, `load/hls-watch.js`)
+
+### 실행 방법 (k3d)
+
+필요 도구: Docker, k3d, kubectl
+
+```bash
+docker build -t onair-backend:dev backend
+docker build -t onair-frontend:dev frontend
+docker pull bluenviron/mediamtx:1.21.4
+
+k3d cluster create onair -p "8088:80@loadbalancer" -p "8189:8189/udp@loadbalancer" --wait
+k3d image import onair-backend:dev onair-frontend:dev bluenviron/mediamtx:1.21.4 -c onair
+
+kubectl create secret generic onair-db --from-literal=password=<DB 비밀번호>
+kubectl apply -f k8s/
+```
+
+브라우저에서 `http://localhost:8088`로 접속합니다.
+
+### 환경변수 예시 (k3d)
+
+설정은 `k8s/backend.yaml`의 ConfigMap에 있고, 비밀 값은 Secret으로 클러스터에만 만듭니다(형식: `k8s/secret.yaml.example`).
+
+| 변수 | 예시 |
+| --- | --- |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://postgres:5432/onair` |
+| `SPRING_DATASOURCE_USERNAME` | `onair` |
+| `SPRING_DATASOURCE_PASSWORD` | Secret `onair-db`의 `password` |
+| `STORAGE_DIR` | `/data/videos` |
+
+### 스케일 아웃·인 확인 절차
+
+```bash
+# 터미널 1: 인스턴스 수 보기
+kubectl get hpa backend -w
+
+# 터미널 2: 부하 걸기(약 4분)
+docker run --rm --network k3d-onair -v "$PWD/load:/load" grafana/k6:2.4.0 run /load/list-broadcasts.js
+```
+
+1. 부하가 걸리면 API 서버 파드가 1개에서 3개로 늘어납니다.
+2. 부하를 멈추고 약 5분 뒤 1개로 줄어듭니다.
+3. 그동안 브라우저에서 로그인 상태, 방송 목록, 댓글이 그대로인지 확인합니다.
+
+### 확인 결과
+
+부하를 걸자 1개에서 3개로 늘었고, 부하를 멈추자 1개로 줄었습니다. 그동안 로그인 상태, 방송 목록, 댓글은 그대로였습니다.
+
+```text
+# 부하 전
+NAME      REFERENCE            TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+backend   Deployment/backend   cpu: 1%/50%   1         3         1          45h
+
+# 부하 중
+NAME      REFERENCE            TARGETS         MINPODS   MAXPODS   REPLICAS   AGE
+backend   Deployment/backend   cpu: 109%/50%   1         3         3          46h
+
+# 부하를 멈춘 뒤
+NAME      REFERENCE            TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+backend   Deployment/backend   cpu: 1%/50%   1         3         1          46h
+```
+
+<br>
+
+## 실행 방법 (개발)
 
 필요 도구: JDK 25, Node.js, pnpm, Docker
 
