@@ -14,7 +14,6 @@ import com.onair.live.LiveChat;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,12 +30,10 @@ public class Comments implements BroadcastDeletionListener {
     private final AppUserRepository users;
     private final Clock clock;
     private final LiveChat chat;
-    private final JdbcTemplate jdbc;
 
     Comments(CommentRepository comments, BroadcastRepository broadcasts, AppUserRepository users, Clock clock,
-            LiveChat chat, JdbcTemplate jdbc) {
+            LiveChat chat) {
         this.chat = chat;
-        this.jdbc = jdbc;
         this.comments = comments;
         this.broadcasts = broadcasts;
         this.users = users;
@@ -55,10 +52,7 @@ public class Comments implements BroadcastDeletionListener {
         return new CommentPage(items, nextCursor, comments.countOf(broadcastId));
     }
 
-    /**
-     * 댓글을 쓴다. 로그인(401), 방송 존재(404), 내용 규칙(400) 순으로 확인한다.
-     * 채팅이면 트랜잭션의 동기 커밋을 끄므로, 후원 확정처럼 잃으면 안 되는 저장과 한 트랜잭션에서 부르지 않는다.
-     */
+    /** 댓글을 쓴다. 로그인(401), 방송 존재(404), 내용 규칙(400) 순으로 확인한다. */
     @Transactional
     public CommentView write(long broadcastId, Long userId, String rawContent) {
         AppUser author = Requester.load(userId, users);
@@ -73,9 +67,6 @@ public class Comments implements BroadcastDeletionListener {
         if (broadcast.isChat()) {
             // 같은 트랜잭션에서 보내 커밋될 때만 전달된다. 구독자가 받은 채팅을 곧바로 REST로 읽을 수 있다.
             chat.publish(broadcastId, view);
-            // NOTIFY한 커밋은 DB 전체 잠금 하나로 줄을 서므로 그 잠금을 쥔 채 디스크 동기화를 기다리지 않는다.
-            // DB가 갑자기 죽으면 직전 채팅 몇 건을 잃을 수 있다.
-            jdbc.execute("set local synchronous_commit = off");
         }
         return view;
     }
