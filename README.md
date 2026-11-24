@@ -27,7 +27,7 @@
   </tr>
 </table>
 
-> 화면의 채널·방송·채팅은 모두 데모용 더미 데이터이고, 결제는 토스페이먼츠 테스트 모드입니다. 휴대폰 화면은 Chrome 모바일 에뮬레이션으로 찍었습니다.
+> 화면의 채널·방송·채팅은 모두 데모용 더미 데이터이고, 결제는 토스페이먼츠 테스트 모드입니다. 휴대폰 화면은 브라우저의 모바일 화면 에뮬레이션으로 찍었습니다.
 
 <br>
 
@@ -60,15 +60,6 @@
   <img src="docs/images/architecture.svg" alt="시청자는 웹 화면을 거쳐 여러 인스턴스로 실행되는 API 서버를 쓰고, API 서버는 PostgreSQL과 공유 저장소를 함께 쓴다. 송출자는 WHIP으로 미디어 서버에 보내고, 미디어 서버는 HLS 조각을 공유 저장소에 쓰며 송출 키를 API 서버에 확인한다. 결제는 토스페이먼츠" width="100%">
 </p>
 
-| 구성 | 역할 |
-| --- | --- |
-| 웹 화면 | React SPA. 개발 서버가 `/api`를 백엔드로 넘겨 같은 출처로 동작합니다(CORS 없음). |
-| REST API | 방송·댓글·후원 API. 로그인은 서버 세션 쿠키, 상태를 바꾸는 요청은 CSRF 토큰으로 보호합니다. |
-| 미디어 서버 | 송출 화면이 WebRTC(WHIP)로 보낸 영상을 MediaMTX가 받아 HLS 조각으로 공유 폴더에 씁니다. 송출 키는 API 서버에 확인하고, API 서버는 송출 목록을 읽어 끊긴 방송을 정리합니다. |
-| 채팅 WebSocket | 저장된 채팅과 확정된 후원을 방송 중인 화면에 실시간으로 보냅니다(쓰기는 REST). 서버가 여러 대여도 PostgreSQL 알림(NOTIFY)으로 모든 서버의 시청자에게 갑니다. |
-| 영상 | 시청 화면은 API 서버가 공유 폴더에서 내주는 HLS(`/hls/...`)를 재생합니다. |
-| 결제 | 브라우저는 토스 결제위젯으로 결제하고, 서버가 토스 승인 API로 확정합니다. 승인 통지(웹훅)도 받습니다. |
-
 ### 배포 구성 (Kubernetes)
 
 <p align="center">
@@ -95,18 +86,29 @@
 
 <br>
 
-## 로컬 오토스케일 (5단계)
+## 실행 방법
 
-### 구현 범위
+### 개발
 
-- 컨테이너 이미지: `backend/Dockerfile`, `frontend/Dockerfile`
-- 여러 인스턴스 실행: k3d 클러스터에 배포(`k8s/*.yaml`)
-- 자동 스케일 아웃·인: HPA가 API 서버 CPU 50% 기준으로 1~3개 사이에서 조절(`k8s/hpa.yaml`)
-- 요청 분산: Ingress와 Service(`k8s/ingress.yaml`, `k8s/backend.yaml`)
-- 공용 저장소: 로그인 세션·방송·댓글·후원은 PostgreSQL, 영상은 공유 볼륨, 라이브 상태는 DB(`k8s/postgres.yaml`, `k8s/backend.yaml`)
-- 부하 스크립트: k6(`load/list-broadcasts.js`, `load/chat.js`, `load/hls-watch.js`)
+필요 도구: JDK 25, Node.js, pnpm, Docker
 
-### 실행 방법 (k3d)
+```bash
+cd backend
+cp .env.example .env   # 처음 한 번. POSTGRES_PASSWORD를 정합니다
+./gradlew bootRun
+```
+
+`bootRun`을 하면 `backend/compose.yaml`의 PostgreSQL과 미디어 서버(MediaMTX) 컨테이너가 함께 뜹니다.
+
+```bash
+cd frontend
+pnpm install
+pnpm dev:local
+```
+
+`http://localhost:5174`로 접속합니다.
+
+### 로컬 클러스터 (k3d)
 
 필요 도구: Docker, k3d, kubectl
 
@@ -122,86 +124,28 @@ kubectl create secret generic onair-db --from-literal=password=<DB 비밀번호>
 kubectl apply -f k8s/
 ```
 
-브라우저에서 `http://localhost:8088`로 접속합니다.
+`http://localhost:8088`로 접속합니다. 설정은 `k8s/backend.yaml`의 ConfigMap에 있고, 비밀 값은 위처럼 Secret으로 클러스터에만 만듭니다.
 
-### 환경변수 예시 (k3d)
-
-설정은 `k8s/backend.yaml`의 ConfigMap에 있고, 비밀 값은 Secret으로 클러스터에만 만듭니다(형식: `k8s/secret.yaml.example`).
-
-| 변수 | 예시 |
-| --- | --- |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://postgres:5432/onair` |
-| `SPRING_DATASOURCE_USERNAME` | `onair` |
-| `SPRING_DATASOURCE_PASSWORD` | Secret `onair-db`의 `password` |
-| `STORAGE_DIR` | `/data/videos` |
-
-### 스케일 아웃·인 확인 절차
+자동 확장은 부하를 걸어 확인합니다. 부하가 걸리면 API 서버 Pod가 1개에서 3개로 늘고, 부하를 멈추면 약 5분 뒤 1개로 줄어듭니다.
 
 ```bash
-# 터미널 1: 인스턴스 수 보기
 kubectl get hpa backend -w
-
-# 터미널 2: 부하 걸기(약 4분)
 docker run --rm --network k3d-onair -v "$PWD/load:/load" grafana/k6:2.4.0 run /load/list-broadcasts.js
 ```
 
-1. 부하가 걸리면 API 서버 파드가 1개에서 3개로 늘어납니다.
-2. 부하를 멈추고 약 5분 뒤 1개로 줄어듭니다.
-3. 그동안 브라우저에서 로그인 상태, 방송 목록, 댓글이 그대로인지 확인합니다.
-
-### 확인 결과
-
-부하를 걸자 1개에서 3개로 늘었고, 부하를 멈추자 1개로 줄었습니다. 그동안 로그인 상태, 방송 목록, 댓글은 그대로였습니다.
-
-```text
-# 부하 전
-NAME      REFERENCE            TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
-backend   Deployment/backend   cpu: 1%/50%   1         3         1          45h
-
-# 부하 중
-NAME      REFERENCE            TARGETS         MINPODS   MAXPODS   REPLICAS   AGE
-backend   Deployment/backend   cpu: 109%/50%   1         3         3          46h
-
-# 부하를 멈춘 뒤
-NAME      REFERENCE            TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
-backend   Deployment/backend   cpu: 1%/50%   1         3         1          46h
-```
-
-<br>
-
-## 실행 방법 (개발)
-
-필요 도구: JDK 25, Node.js, pnpm, Docker
-
-```bash
-cd backend
-cp .env.example .env   # 처음 한 번. POSTGRES_PASSWORD를 정합니다
-./gradlew bootRun
-```
-
-`bootRun`을 하면 `backend/compose.yaml`의 PostgreSQL 컨테이너가 함께 뜹니다. 백엔드 테스트도 Docker로 PostgreSQL 컨테이너를 띄웁니다.
-
-```bash
-cd frontend
-pnpm install
-pnpm dev:local
-```
-
-PC에서 `http://localhost:5174`로 접속합니다. 휴대폰으로 송출하려면 `pnpm dev`로 HTTPS 개발 서버(5173)를 띄우고, 같은 Wi-Fi의 휴대폰에서 `https://<PC의 LAN 주소>:5173`으로 접속합니다(자체 서명 인증서 경고는 넘깁니다).
-
 ### 환경변수
 
-`backend/.env`(git 제외)에 둡니다. `POSTGRES_PASSWORD` 말고는 모두 선택입니다.
+개발 실행은 `backend/.env`(git 제외)에 둡니다. `POSTGRES_PASSWORD` 말고는 모두 선택입니다.
 
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | 없음(필수) | 개발용 PostgreSQL 컨테이너의 비밀번호. 이 PC 안에서만 쓰는 값입니다 |
 | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | 개발에서는 `compose.yaml`의 컨테이너 | PostgreSQL 접속 정보. Docker Compose 없이 띄울 때만 줍니다 |
 | `STORAGE_DIR` | `~/.onair/videos` | 영상·썸네일 저장 폴더 |
+| `HLS_DIR` | `~/.onair/hls` | 미디어 서버가 HLS 조각을 쓰는 폴더 |
+| `MEDIA_API_URL` | `http://localhost:9997` | 미디어 서버 제어 API |
 | `MAX_UPLOAD_SIZE` | `200MB` | 업로드 크기 상한 |
 | `ALLOWED_ORIGINS` | `https://*:5173,http://localhost:5174` | 채팅 WebSocket을 받을 화면 주소 |
-| `TOSS_CLIENT_KEY` | 없음 | 토스페이먼츠 결제위젯 클라이언트 키(`test_gck_…`) |
-| `TOSS_SECRET_KEY` | 없음 | 토스페이먼츠 결제위젯 시크릿 키(`test_gsk_…`) |
-| `TOSS_TEST_CODE` | 없음 | 승인 실패를 재현하는 테스트 코드(예: `REJECT_CARD_PAYMENT`) |
+| `TOSS_CLIENT_KEY`, `TOSS_SECRET_KEY` | 없음 | 토스페이먼츠 결제위젯 테스트 키(`test_gck_…`, `test_gsk_…`) |
 
-후원을 쓰려면 토스페이먼츠 개발자 문서의 공개 결제위젯 테스트 키를 `backend/.env`에만 넣습니다. 키가 없으면 후원 주문만 503이고 나머지는 그대로 동작합니다. 공용 테스트 상점이므로 결제창에는 퀵계좌이체를 고르고 토스가 보여 주는 테스트 값만 씁니다(카드번호·실제 개인정보는 넣지 않습니다).
+토스 키가 없으면 후원 주문만 503이고 나머지는 그대로 동작합니다.
