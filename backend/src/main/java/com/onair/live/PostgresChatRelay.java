@@ -23,6 +23,9 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>보내기는 호출한 쪽 트랜잭션 연결의 세이브포인트 안에서 한다. NOTIFY는 커밋될 때만 나가고, NOTIFY가 실패해도
  * 세이브포인트까지만 되돌려 저장(후원 확정 등)은 그대로 커밋된다.
+ *
+ * <p>NOTIFY한 커밋은 DB 전체 잠금 하나로 줄을 선다. 채팅을 보낸 트랜잭션은 그 잠금을 쥔 채 디스크 동기화를 기다리지 않도록
+ * 동기 커밋을 끈다. DB가 갑자기 죽으면 직전 채팅 몇 건을 잃을 수 있다. 후원과 종료는 그대로 기다린다.
  */
 @Component
 class PostgresChatRelay implements ChatRelay, SmartLifecycle {
@@ -62,6 +65,11 @@ class PostgresChatRelay implements ChatRelay, SmartLifecycle {
                 notify.setString(1, CHANNEL);
                 notify.setString(2, payload);
                 notify.execute();
+                if (savepoint != null && ChatMessage.COMMENT.equals(message.type())) {
+                    try (Statement asyncCommit = connection.createStatement()) {
+                        asyncCommit.execute("set local synchronous_commit = off");
+                    }
+                }
             } catch (SQLException e) {
                 if (savepoint != null) {
                     connection.rollback(savepoint);
