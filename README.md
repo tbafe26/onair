@@ -33,10 +33,11 @@
 
 ## 주요 기능
 
-- **방송**: 영상을 올려 녹화방송으로 재생하고, 휴대폰 카메라로 라이브 송출해 다른 기기에서 시청합니다.
+- **방송**: 영상을 올려 녹화방송으로 재생하고, 휴대폰 카메라로 라이브 송출해 다른 기기에서 시청자 수 제한 없이 시청합니다.
 - **사용자와 권한**: 가입·로그인하면 내가 올리거나 송출한 방송을 직접 관리(제목 수정, 삭제, 송출 종료)합니다.
 - **댓글과 채팅**: 녹화방송에는 댓글을 남기고, 라이브방송에서는 실시간으로 채팅합니다.
 - **후원**: 방송 중인 라이브방송에 금액과 메시지를 골라 테스트 결제로 후원하면, 채팅에 바로 나타나고 방송별 내역과 합계에 쌓입니다.
+- **확장**: 서버 여러 대로 실행되고, 부하에 따라 자동으로 늘고 줄어도 로그인·채팅·후원이 이어집니다.
 
 <br>
 
@@ -46,26 +47,33 @@
 | --- | --- |
 | 백엔드 | ![Java](https://img.shields.io/badge/Java_25-000000?logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot_4-6DB33F?logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring_Security-6DB33F?logo=springsecurity&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white) ![Gradle](https://img.shields.io/badge/Gradle-02303A?logo=gradle&logoColor=white) |
 | 프런트엔드 | ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white) ![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white) |
-| 실시간 | ![WebRTC](https://img.shields.io/badge/WebRTC-333333?logo=webrtc&logoColor=white) ![WebSocket](https://img.shields.io/badge/WebSocket-010101?logoColor=white) |
+| 실시간 | ![WebRTC](https://img.shields.io/badge/WebRTC_%28WHIP%29-333333?logo=webrtc&logoColor=white) ![HLS](https://img.shields.io/badge/HLS_%28hls.js%29-1F2937?logoColor=white) ![WebSocket](https://img.shields.io/badge/WebSocket-010101?logoColor=white) |
+| 인프라 | ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![Kubernetes](https://img.shields.io/badge/Kubernetes_%28k3d%29-326CE5?logo=kubernetes&logoColor=white) ![MediaMTX](https://img.shields.io/badge/MediaMTX-374151?logoColor=white) |
 | 결제 | ![Toss Payments](https://img.shields.io/badge/토스페이먼츠_결제위젯-3182F6?logoColor=white) |
-| 테스트·CI | ![JUnit](https://img.shields.io/badge/JUnit_5-25A162?logo=junit5&logoColor=white) ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2F4F4F?logo=github&logoColor=white) ![gitleaks](https://img.shields.io/badge/gitleaks-CC2936?logoColor=white) |
+| 테스트·CI | ![JUnit](https://img.shields.io/badge/JUnit_5-25A162?logo=junit5&logoColor=white) ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2F4F4F?logo=github&logoColor=white) ![gitleaks](https://img.shields.io/badge/gitleaks-CC2936?logoColor=white) ![Testcontainers](https://img.shields.io/badge/Testcontainers-291A3F?logoColor=white) ![k6](https://img.shields.io/badge/k6-7D64FF?logo=k6&logoColor=white) |
 
 <br>
 
 ## 구성
 
 <p align="center">
-  <img src="docs/images/architecture.svg" alt="시청자·송출자 → 웹 화면(React) → API 서버(Spring Boot) → H2·영상 파일, 토스페이먼츠 결제위젯·승인 API·승인 통지" width="100%">
+  <img src="docs/images/architecture.svg" alt="시청자는 웹 화면을 거쳐 여러 인스턴스로 실행되는 API 서버를 쓰고, API 서버는 PostgreSQL과 공유 저장소를 함께 쓴다. 송출자는 WHIP으로 미디어 서버에 보내고, 미디어 서버는 HLS 조각을 공유 저장소에 쓰며 송출 키를 API 서버에 확인한다. 결제는 토스페이먼츠" width="100%">
 </p>
 
 | 구성 | 역할 |
 | --- | --- |
 | 웹 화면 | React SPA. 개발 서버가 `/api`를 백엔드로 넘겨 같은 출처로 동작합니다(CORS 없음). |
 | REST API | 방송·댓글·후원 API. 로그인은 서버 세션 쿠키, 상태를 바꾸는 요청은 CSRF 토큰으로 보호합니다. |
-| 미디어 서버 | 송출 화면이 WebRTC(WHIP)로 보낸 영상을 MediaMTX가 받아 HLS 조각으로 공유 폴더에 씁니다. API 서버는 송출 목록을 읽어 끊긴 방송을 정리합니다. |
+| 미디어 서버 | 송출 화면이 WebRTC(WHIP)로 보낸 영상을 MediaMTX가 받아 HLS 조각으로 공유 폴더에 씁니다. 송출 키는 API 서버에 확인하고, API 서버는 송출 목록을 읽어 끊긴 방송을 정리합니다. |
 | 채팅 WebSocket | 저장된 채팅과 확정된 후원을 방송 중인 화면에 실시간으로 보냅니다(쓰기는 REST). 서버가 여러 대여도 PostgreSQL 알림(NOTIFY)으로 모든 서버의 시청자에게 갑니다. |
 | 영상 | 시청 화면은 API 서버가 공유 폴더에서 내주는 HLS(`/hls/...`)를 재생합니다. |
 | 결제 | 브라우저는 토스 결제위젯으로 결제하고, 서버가 토스 승인 API로 확정합니다. 승인 통지(웹훅)도 받습니다. |
+
+### 배포 구성 (Kubernetes)
+
+<p align="center">
+  <img src="docs/images/kubernetes.svg" alt="k3d 클러스터(노드 1대) 안에서 Ingress(Traefik)가 경로별로 frontend, backend, mediamtx Deployment로 나누고, HPA가 backend Pod를 CPU 50% 기준 1~3개로 조절한다. backend는 StatefulSet postgres와 ConfigMap·Secret을 쓰고, backend와 mediamtx가 PVC videos를 함께 쓴다" width="100%">
+</p>
 
 <br>
 
